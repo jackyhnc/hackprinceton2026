@@ -79,7 +79,10 @@ interface Edge {
   pulse: number; // 0..1 glow intensity
 }
 
-const COLORS = ["#3b82f6", "#10b981", "#f59e0b", "#ec4899", "#8b5cf6", "#06b6d4"];
+// Muted palette tuned for a white canvas — saturated enough to read but not
+// neon. Kept in the same index order as before so voter-chip colors map
+// consistently across swarm + gallery.
+const COLORS = ["#2563eb", "#059669", "#d97706", "#db2777", "#7c3aed", "#0891b2"];
 
 export default function SwarmPage() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -190,12 +193,14 @@ export default function SwarmPage() {
 
     const isDone = isDoneRef.current;
 
-    // Fade previous frame for motion trails
-    ctx.fillStyle = "rgba(10,10,15,0.22)";
+    // Fade previous frame for motion trails — white veil so the canvas
+    // stays light. Higher alpha than the old dark trail because we don't
+    // need as much persistence to read the motion on a bright surface.
+    ctx.fillStyle = "rgba(255,255,255,0.4)";
     ctx.fillRect(0, 0, w, h);
 
-    // Dotted background grid
-    ctx.fillStyle = "rgba(255,255,255,0.04)";
+    // Dotted background grid (dark dots on light surface)
+    ctx.fillStyle = "rgba(24,24,27,0.08)";
     for (let x = 20; x < w; x += 40) {
       for (let y = 20; y < h; y += 40) {
         ctx.fillRect(x, y, 1, 1);
@@ -252,12 +257,12 @@ export default function SwarmPage() {
       ctx.arc(tw.x, tw.y, 7, 0, Math.PI * 2);
       ctx.fillStyle = color;
       ctx.fill();
-      ctx.strokeStyle = "rgba(255,255,255,0.85)";
-      ctx.lineWidth = 1.2;
+      ctx.strokeStyle = "rgba(24,24,27,0.35)";
+      ctx.lineWidth = 1;
       ctx.stroke();
 
       ctx.font = "10px ui-sans-serif, system-ui, sans-serif";
-      ctx.fillStyle = "rgba(255,255,255,0.72)";
+      ctx.fillStyle = "rgba(39,39,42,0.82)";
       ctx.textAlign = "center";
       ctx.fillText(tw.label, tw.x, tw.y + 22);
     });
@@ -270,9 +275,9 @@ export default function SwarmPage() {
       const wobble = c.state === "coding" && !isDone ? Math.sin(Date.now() / 250) * 3 : 0;
       const r = 20 + c.t * 8 + wobble;
 
-      // outer glow
+      // outer glow — softer on white so it doesn't bloom out the cluster
       const grad = ctx.createRadialGradient(c.x, c.y, r * 0.3, c.x, c.y, r * 2.2);
-      grad.addColorStop(0, color + "99");
+      grad.addColorStop(0, color + "40");
       grad.addColorStop(1, color + "00");
       ctx.fillStyle = grad;
       ctx.beginPath();
@@ -283,8 +288,8 @@ export default function SwarmPage() {
       ctx.arc(c.x, c.y, r, 0, Math.PI * 2);
       ctx.fillStyle = color;
       ctx.fill();
-      ctx.strokeStyle = "rgba(255,255,255,0.95)";
-      ctx.lineWidth = 2;
+      ctx.strokeStyle = "rgba(24,24,27,0.25)";
+      ctx.lineWidth = 1.25;
       ctx.stroke();
 
       ctx.font = "bold 12px ui-sans-serif, system-ui, sans-serif";
@@ -293,11 +298,11 @@ export default function SwarmPage() {
       ctx.fillText(c.name.slice(0, 20), c.x, c.y + 4);
       if (c.state === "done") {
         ctx.font = "10px ui-sans-serif, system-ui, sans-serif";
-        ctx.fillStyle = "rgba(255,255,255,0.75)";
+        ctx.fillStyle = "rgba(39,39,42,0.75)";
         ctx.fillText("✓ generated", c.x, c.y + r + 14);
       } else if (c.state === "coding" && !isDone) {
         ctx.font = "10px ui-sans-serif, system-ui, sans-serif";
-        ctx.fillStyle = "rgba(255,255,255,0.75)";
+        ctx.fillStyle = "rgba(39,39,42,0.75)";
         ctx.fillText("coding...", c.x, c.y + r + 14);
       }
     });
@@ -460,18 +465,18 @@ export default function SwarmPage() {
       <div className="max-w-6xl mx-auto w-full px-6 py-6 flex items-end justify-between gap-4">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Swarm graph</h1>
-          <p className="text-sm text-neutral-600 mt-1">
+          <p className="text-sm text-zinc-600 mt-1">
             Watch agents form opinions, cluster, and negotiate the storefront layout in real time.
           </p>
         </div>
         <div className="flex items-center gap-3">
-          <span className="text-xs font-mono text-neutral-500">
+          <span className="text-xs font-mono text-zinc-500">
             {runId ? `run ${runId.slice(0, 8)} · ${status}` : "no run"}
           </span>
           <button
             onClick={startRun}
             disabled={starting || (status !== "idle" && status !== "done")}
-            className="rounded-lg bg-neutral-900 text-white text-sm font-medium px-4 py-2 hover:bg-neutral-700 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="rounded-lg bg-zinc-900 text-white text-sm font-medium px-4 py-2 hover:bg-zinc-700 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {starting ? "Starting…" : status !== "idle" && status !== "done" ? "Running…" : "Run swarm"}
           </button>
@@ -487,30 +492,30 @@ export default function SwarmPage() {
       )}
 
       <div className="max-w-6xl mx-auto w-full px-6 pb-12 grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-4">
-        <div className="relative rounded-xl border border-neutral-200 bg-[#0a0a0f] overflow-hidden aspect-[4/3]">
+        <div className="relative rounded-xl border border-zinc-200 bg-white overflow-hidden aspect-[4/3]">
           <canvas ref={canvasRef} className="absolute inset-0 w-full h-full" />
           {status === "idle" && (
-            <div className="absolute inset-0 flex items-center justify-center text-neutral-500 text-sm">
+            <div className="absolute inset-0 flex items-center justify-center text-zinc-500 text-sm">
               Click &ldquo;Run swarm&rdquo; to begin. Agents will animate as opinions form.
             </div>
           )}
-          <div className="absolute bottom-3 left-3 text-[10px] font-mono text-neutral-500 flex gap-3">
+          <div className="absolute bottom-3 left-3 text-[10px] font-mono text-zinc-400 flex gap-3">
             <span>● agent node</span>
             <span>● cluster</span>
             <span>— opinion edge</span>
           </div>
         </div>
 
-        <aside className="rounded-xl border border-neutral-200 bg-white p-4 max-h-[600px] overflow-y-auto">
-          <h3 className="text-xs font-semibold uppercase tracking-wider text-neutral-500 mb-3">
+        <aside className="rounded-xl border border-zinc-200 bg-white p-4 max-h-[600px] overflow-y-auto">
+          <h3 className="text-xs font-semibold uppercase tracking-wider text-zinc-500 mb-3">
             Event log
           </h3>
           {log.length === 0 ? (
-            <div className="text-sm text-neutral-400">No events yet.</div>
+            <div className="text-sm text-zinc-400">No events yet.</div>
           ) : (
             <ul className="space-y-1.5 text-xs font-mono">
               {log.map((line, i) => (
-                <li key={i} className="text-neutral-700 leading-relaxed">
+                <li key={i} className="text-zinc-700 leading-relaxed">
                   {line}
                 </li>
               ))}
@@ -523,7 +528,7 @@ export default function SwarmPage() {
         <div className="max-w-6xl mx-auto w-full px-6 pb-16">
           <div className="mb-4">
             <h2 className="text-xl font-semibold tracking-tight">Final conclusions</h2>
-            <p className="text-sm text-neutral-600 mt-1">
+            <p className="text-sm text-zinc-600 mt-1">
               {conclusions.length} clusters formed. Each was matched to a hand-crafted layout variant.
             </p>
           </div>
@@ -533,7 +538,7 @@ export default function SwarmPage() {
             ))}
           </div>
           <div className="mt-6 text-sm">
-            <a href="/presets" className="underline text-neutral-700 hover:text-neutral-900">
+            <a href="/presets" className="underline text-zinc-700 hover:text-zinc-900">
               View full preset gallery →
             </a>
           </div>
@@ -584,15 +589,15 @@ function ClusterCard({
     .slice(0, 8);
 
   return (
-    <div className="rounded-xl border border-neutral-200 bg-white overflow-hidden flex flex-col">
-      <div className="p-4 border-b border-neutral-100">
+    <div className="rounded-xl border border-zinc-200 bg-white overflow-hidden flex flex-col">
+      <div className="p-4 border-b border-zinc-100">
         <div className="text-sm font-medium">{preset.display_name}</div>
-        <div className="text-xs text-neutral-500 mt-0.5">{preset.description}</div>
+        <div className="text-xs text-zinc-500 mt-0.5">{preset.description}</div>
         {variantLine && (
-          <div className="text-[11px] font-mono text-neutral-400 mt-2">{variantLine}</div>
+          <div className="text-[11px] font-mono text-zinc-400 mt-2">{variantLine}</div>
         )}
       </div>
-      <div className="flex-1 bg-neutral-50">
+      <div className="flex-1 bg-zinc-50">
         <iframe
           srcDoc={doc}
           sandbox="allow-same-origin"
@@ -601,27 +606,27 @@ function ClusterCard({
           style={{ height: 280, border: 0, display: "block" }}
         />
       </div>
-      <div className="p-3 border-t border-neutral-100">
-        <div className="text-[10px] uppercase tracking-wider text-neutral-400 mb-1.5">
+      <div className="p-3 border-t border-zinc-100">
+        <div className="text-[10px] uppercase tracking-wider text-zinc-400 mb-1.5">
           {preset.voter_twin_ids.length} voter{preset.voter_twin_ids.length === 1 ? "" : "s"}
         </div>
         <div className="flex flex-wrap gap-1.5">
           {voterNames.map((n, i) => (
             <span
               key={i}
-              className="text-[11px] bg-neutral-100 text-neutral-700 px-2 py-0.5 rounded"
+              className="text-[11px] bg-zinc-100 text-zinc-700 px-2 py-0.5 rounded"
             >
               {n}
             </span>
           ))}
           {preset.voter_twin_ids.length > 8 && (
-            <span className="text-[11px] text-neutral-500 px-2 py-0.5">
+            <span className="text-[11px] text-zinc-500 px-2 py-0.5">
               +{preset.voter_twin_ids.length - 8} more
             </span>
           )}
         </div>
         {changeBody && (
-          <p className="text-xs text-neutral-600 leading-relaxed mt-3 line-clamp-3">
+          <p className="text-xs text-zinc-600 leading-relaxed mt-3 line-clamp-3">
             {changeBody}
           </p>
         )}

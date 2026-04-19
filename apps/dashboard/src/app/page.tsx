@@ -85,14 +85,14 @@ export default function Home() {
       <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-4 mb-8">
         <div>
           <h1 className="text-3xl font-semibold tracking-tight">TwinStore dashboard</h1>
-          <p className="text-neutral-600 mt-2 max-w-2xl text-sm">
+          <p className="text-zinc-600 mt-2 max-w-2xl text-sm">
             Digital twins mint from shopper purchase history, debate the storefront, and pick the
             layout variant each cluster responds to. Your job is to watch the rerun and ship.
           </p>
         </div>
         <Link
           href="/swarm"
-          className="inline-flex items-center justify-center rounded-lg bg-neutral-900 text-white text-sm font-medium px-5 py-2.5 hover:bg-neutral-700 transition"
+          className="inline-flex items-center justify-center rounded-lg bg-zinc-900 text-white text-sm font-medium px-5 py-2.5 hover:bg-zinc-700 transition"
         >
           Run agents →
         </Link>
@@ -128,15 +128,15 @@ export default function Home() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-[1fr_360px] gap-4">
-        <section className="rounded-xl border border-neutral-200 bg-white">
-          <div className="flex items-center justify-between p-4 border-b border-neutral-100">
+        <section className="rounded-xl border border-zinc-200 bg-white">
+          <div className="flex items-center justify-between p-4 border-b border-zinc-100">
             <div>
               <h2 className="text-sm font-semibold tracking-tight">Latest cluster split</h2>
-              <p className="text-xs text-neutral-500 mt-0.5">
+              <p className="text-xs text-zinc-500 mt-0.5">
                 How the last rerun grouped your shoppers.
               </p>
             </div>
-            <Link href="/presets" className="text-xs text-neutral-500 hover:text-neutral-900">
+            <Link href="/presets" className="text-xs text-zinc-500 hover:text-zinc-900">
               full gallery →
             </Link>
           </div>
@@ -145,7 +145,7 @@ export default function Home() {
           ) : latestPresets.length === 0 ? (
             <Empty text="Rerun is still pending. Open /swarm for live progress." />
           ) : (
-            <ul className="divide-y divide-neutral-100">
+            <ul className="divide-y divide-zinc-100">
               {latestPresets.map((p) => {
                 const total = totalShoppers || 1;
                 const share = ((p.voter_twin_ids?.length || 0) / total) * 100;
@@ -153,16 +153,16 @@ export default function Home() {
                   <li key={p.id} className="p-4">
                     <div className="flex items-baseline justify-between gap-3 mb-1.5">
                       <div className="font-medium text-sm truncate">{p.display_name}</div>
-                      <div className="text-xs font-mono text-neutral-500 shrink-0">
+                      <div className="text-xs font-mono text-zinc-500 shrink-0">
                         {p.voter_twin_ids?.length || 0} / {totalShoppers}
                       </div>
                     </div>
-                    <div className="text-xs text-neutral-500 mb-2 line-clamp-1">
+                    <div className="text-xs text-zinc-500 mb-2 line-clamp-1">
                       {p.description}
                     </div>
-                    <div className="h-1.5 bg-neutral-100 rounded overflow-hidden">
+                    <div className="h-1.5 bg-zinc-100 rounded overflow-hidden">
                       <div
-                        className="h-full bg-neutral-800"
+                        className="h-full bg-zinc-800"
                         style={{ width: `${share.toFixed(1)}%` }}
                       />
                     </div>
@@ -173,23 +173,23 @@ export default function Home() {
           )}
         </section>
 
-        <aside className="rounded-xl border border-neutral-200 bg-white">
-          <div className="p-4 border-b border-neutral-100">
+        <aside className="rounded-xl border border-zinc-200 bg-white">
+          <div className="p-4 border-b border-zinc-100">
             <h2 className="text-sm font-semibold tracking-tight">Recent reruns</h2>
-            <p className="text-xs text-neutral-500 mt-0.5">Last 10.</p>
+            <p className="text-xs text-zinc-500 mt-0.5">Last 10.</p>
           </div>
           {!runs || runs.length === 0 ? (
             <Empty text="No runs yet." />
           ) : (
-            <ul className="divide-y divide-neutral-100">
+            <ul className="divide-y divide-zinc-100">
               {runs.map((r) => (
                 <li key={r.id} className="p-3 text-xs flex items-center justify-between gap-3">
                   <div className="min-w-0 flex-1">
-                    <div className="font-mono text-neutral-700 truncate">
+                    <div className="font-mono text-zinc-700 truncate">
                       {r.id.slice(0, 8)}{" "}
-                      <span className="text-neutral-400">· {r.kind}</span>
+                      <span className="text-zinc-400">· {r.kind}</span>
                     </div>
-                    <div className="text-neutral-500 mt-0.5">
+                    <div className="text-zinc-500 mt-0.5">
                       {relTime(r.finished_at ?? r.started_at)} · {r.twin_ids?.length || 0} twins
                     </div>
                   </div>
@@ -206,10 +206,10 @@ export default function Home() {
 
 function Tile({ label, value, sub }: { label: string; value: string; sub?: string }) {
   return (
-    <div className="rounded-lg border border-neutral-200 bg-white p-4">
-      <div className="text-[10px] uppercase tracking-wider text-neutral-400">{label}</div>
+    <div className="rounded-lg border border-zinc-200 bg-white p-4">
+      <div className="text-[10px] uppercase tracking-wider text-zinc-400">{label}</div>
       <div className="text-xl font-semibold mt-1 truncate">{value}</div>
-      {sub && <div className="text-[11px] text-neutral-500 mt-0.5">{sub}</div>}
+      {sub && <div className="text-[11px] text-zinc-500 mt-0.5">{sub}</div>}
     </div>
   );
 }
@@ -221,7 +221,7 @@ function StatusPill({ status }: { status: string }) {
     pending: "bg-amber-50 text-amber-700 border-amber-200",
     error: "bg-rose-50 text-rose-700 border-rose-200",
   };
-  const cls = map[status] || "bg-neutral-100 text-neutral-600 border-neutral-200";
+  const cls = map[status] || "bg-zinc-100 text-zinc-600 border-zinc-200";
   return (
     <span className={`text-[10px] font-medium px-2 py-0.5 rounded border ${cls}`}>
       {status}
@@ -230,5 +230,5 @@ function StatusPill({ status }: { status: string }) {
 }
 
 function Empty({ text }: { text: string }) {
-  return <div className="p-6 text-center text-sm text-neutral-400">{text}</div>;
+  return <div className="p-6 text-center text-sm text-zinc-400">{text}</div>;
 }

@@ -55,7 +55,7 @@ export default function PresetsPage() {
     <div className="max-w-6xl mx-auto w-full px-6 py-6 flex flex-col gap-6">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Preset gallery</h1>
-        <p className="text-sm text-neutral-600 mt-1">
+        <p className="text-sm text-zinc-600 mt-1">
           Every generated homepage variant, rendered live. Each preset is the outcome of a twin-swarm vote.
         </p>
       </div>
@@ -67,11 +67,11 @@ export default function PresetsPage() {
       )}
 
       {presets === null && !error && (
-        <div className="text-neutral-400 text-sm">Loading&hellip;</div>
+        <div className="text-zinc-400 text-sm">Loading&hellip;</div>
       )}
 
       {presets && presets.length === 0 && (
-        <div className="rounded-xl border border-dashed border-neutral-300 p-8 text-center text-sm text-neutral-500">
+        <div className="rounded-xl border border-dashed border-zinc-300 p-8 text-center text-sm text-zinc-500">
           No presets yet. Go to the <a className="underline" href="/swarm">Swarm</a> page and click
           &ldquo;Run swarm&rdquo;.
         </div>
@@ -86,15 +86,15 @@ export default function PresetsPage() {
                 onClick={() => setSelected(p.id)}
                 className={`text-left rounded-lg border p-3 transition ${
                   selected === p.id
-                    ? "border-neutral-900 bg-neutral-900 text-white"
-                    : "border-neutral-200 bg-white hover:border-neutral-400"
+                    ? "border-zinc-900 bg-zinc-900 text-white"
+                    : "border-zinc-200 bg-white hover:border-zinc-400"
                 }`}
               >
                 <div className="font-medium text-sm">{p.display_name}</div>
-                <div className={`text-xs mt-0.5 ${selected === p.id ? "text-neutral-300" : "text-neutral-500"}`}>
+                <div className={`text-xs mt-0.5 ${selected === p.id ? "text-zinc-300" : "text-zinc-500"}`}>
                   {p.description}
                 </div>
-                <div className={`text-[10px] font-mono mt-1 ${selected === p.id ? "text-neutral-400" : "text-neutral-400"}`}>
+                <div className={`text-[10px] font-mono mt-1 ${selected === p.id ? "text-zinc-400" : "text-zinc-400"}`}>
                   {p.voter_twin_ids?.length || 0} voters
                 </div>
               </button>
@@ -104,14 +104,14 @@ export default function PresetsPage() {
           <section className="min-w-0 flex flex-col gap-3">
             {active ? (
               <>
-                <div className="rounded-xl border border-neutral-200 bg-white p-4">
-                  <div className="text-xs uppercase tracking-wider text-neutral-400 mb-1">
+                <div className="rounded-xl border border-zinc-200 bg-white p-4">
+                  <div className="text-xs uppercase tracking-wider text-zinc-400 mb-1">
                     Change summary
                   </div>
-                  <p className="text-sm text-neutral-700 leading-relaxed">{active.change_summary}</p>
+                  <p className="text-sm text-zinc-700 leading-relaxed">{active.change_summary}</p>
                 </div>
-                <div className="rounded-xl border border-neutral-200 bg-white overflow-hidden">
-                  <div className="px-4 py-2 border-b border-neutral-100 text-xs font-mono text-neutral-500 flex justify-between">
+                <div className="rounded-xl border border-zinc-200 bg-white overflow-hidden">
+                  <div className="px-4 py-2 border-b border-zinc-100 text-xs font-mono text-zinc-500 flex justify-between">
                     <span>live preview</span>
                     <span>
                       {active.generated_html.length}B html · {active.generated_css.length}B css
@@ -121,7 +121,7 @@ export default function PresetsPage() {
                 </div>
               </>
             ) : (
-              <div className="text-neutral-400 text-sm">Select a preset to preview.</div>
+              <div className="text-zinc-400 text-sm">Select a preset to preview.</div>
             )}
           </section>
         </div>

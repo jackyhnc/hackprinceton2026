@@ -1,8 +1,12 @@
 @import "tailwindcss";
 
+/* Minimal, light-only palette. No dark-mode inversion — the dashboard is
+   always served on off-white with high-contrast ink text. */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #fafafa;
+  --foreground: #18181b;
+  --muted: #52525b;
+  --line: #e4e4e7;
 }
 
 @theme inline {
@@ -12,15 +16,10 @@
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
-
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-geist-sans), -apple-system, BlinkMacSystemFont, "Segoe UI",
+    Roboto, sans-serif;
+  font-feature-settings: "cv11", "ss01";
 }
