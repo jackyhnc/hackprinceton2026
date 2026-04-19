@@ -328,17 +328,17 @@ export default function SwarmPage() {
       ctx.stroke();
 
       ctx.font = "bold 11px ui-sans-serif, system-ui, sans-serif";
-      ctx.fillStyle = "white";
+      ctx.fillStyle = "#18181b"; // black so overflow stays readable on white canvas
       ctx.textAlign = "center";
       ctx.fillText(c.name.slice(0, 18), c.x, c.y + 4);
       if (c.state === "done") {
         ctx.font = "10px ui-sans-serif, system-ui, sans-serif";
         ctx.fillStyle = "rgba(39,39,42,0.65)";
-        ctx.fillText("✓", c.x, c.y + r + 14);
+        ctx.fillText("✓ done", c.x, c.y + r + 14);
       } else if (c.state === "coding") {
         ctx.font = "10px ui-sans-serif, system-ui, sans-serif";
         ctx.fillStyle = "rgba(39,39,42,0.65)";
-        ctx.fillText("matching…", c.x, c.y + r + 14);
+        ctx.fillText("coding, please wait…", c.x, c.y + r + 14);
       }
     });
 
