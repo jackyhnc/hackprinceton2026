@@ -1,0 +1,426 @@
+<script>
+(function() {
+  var APP_BASE_URL = '{{ block.settings.app_base_url | strip | escape }}';
+  var TWINSTORE_BACKEND_URL = '{{ block.settings.twinstore_backend_url | strip | escape }}';
+  var DEFAULT_DISCOUNT_CODE = '{{ block.settings.discount_code | default: "AMAZON5" | escape }}';
+  var DELAY_MS = 5000;
+  var SIGNUP_QUERY_KEY = "amz_discount";
+  var USER_QUERY_KEY = "amz_external_user_id";
+  var PRESET_POLL_ATTEMPTS = 20;
+  var PRESET_POLL_INTERVAL_MS = 2000;
+
+  // ---------- utilities ----------
+  function normalizedAppBaseUrl() {
+    if (!APP_BASE_URL) return "";
+    var t = String(APP_BASE_URL).trim();
+    if (!t || t === "https://example.com") return "/apps/knot";
+    return t.replace(/\/$/, "");
+  }
+  function normalizedBackendUrl() {
+    var t = String(TWINSTORE_BACKEND_URL || "").trim();
+    if (!t) return "";
+    return t.replace(/\/$/, "");
+  }
+  function buildApiUrl(path) {
+    var base = normalizedAppBaseUrl();
+    if (!base) return "";
+    return base + path;
+  }
+  function buildBackendUrl(path) {
+    var base = normalizedBackendUrl();
+    if (!base) return "";
+    return base + path;
+  }
+  function withUrlParam(url, key, value) {
+    var u = new URL(url, window.location.origin);
+    u.searchParams.set(key, value);
+    return u.toString();
+  }
+  function removeUrlParams(keys) {
+    var url = new URL(window.location.href);
+    for (var i = 0; i < keys.length; i += 1) url.searchParams.delete(keys[i]);
+    window.history.replaceState({}, "", url.toString());
+  }
+  function getShopDomain() {
+    if (window.Shopify && window.Shopify.shop) return window.Shopify.shop;
+    return window.location.hostname;
+  }
+
+  // ---------- preset application ----------
+  function applyCssVars(cssVars) {
+    if (!cssVars || typeof cssVars !== "object") return;
+    var root = document.documentElement;
+    Object.keys(cssVars).forEach(function(key) {
+      try { root.style.setProperty(key, String(cssVars[key])); } catch (_) {}
+    });
+  }
+
+  function runTransform(tf) {
+    if (!tf || !tf.op) return;
+    var nodes = [];
+    try { nodes = tf.selector ? Array.from(document.querySelectorAll(tf.selector)) : []; }
+    catch (_) { return; }
+    nodes.forEach(function(n) {
+      try {
+        switch (tf.op) {
+          case "setText": n.textContent = tf.value; break;
+          case "addClass": if (tf.className) n.classList.add(tf.className); break;
+          case "removeClass": if (tf.className) n.classList.remove(tf.className); break;
+          case "setAttribute": if (tf.name) n.setAttribute(tf.name, tf.value); break;
+          case "hide": n.style.display = "none"; break;
+          case "show": n.style.display = ""; break;
+        }
+      } catch (_) {}
+    });
+  }
+
+  function applyOverrides(overrides) {
+    if (!overrides || typeof overrides !== "object") return;
+    var heroTitle = overrides.hero_title;
+    if (heroTitle) {
+      var heroNode = document.querySelector(
+        ".banner__heading, .section-header__heading, .hero__title, h1.banner__heading, h2.h0, h1"
+      );
+      if (heroNode) heroNode.textContent = heroTitle;
+    }
+    var ctaPrimary = overrides.cta_primary;
+    if (ctaPrimary) {
+      var ctaNode = document.querySelector(
+        ".banner__button, .hero__button, .button--primary, .shopify-payment-button__button"
+      );
+      if (ctaNode) ctaNode.textContent = ctaPrimary;
+    }
+    var badge = overrides.product_card_badge;
+    if (badge) {
+      document.querySelectorAll(".card__badge span, .product-card__badge span, .badge__text").forEach(function(n) {
+        n.textContent = badge;
+      });
+    }
+  }
+
+  function applyPreset(preset, source) {
+    if (!preset || !preset.config) return false;
+    var cfg = preset.config;
+    applyCssVars(cfg.css_vars);
+    if (Array.isArray(cfg.transforms)) cfg.transforms.forEach(runTransform);
+    applyOverrides(cfg.overrides);
+    document.documentElement.setAttribute("data-twinstore-preset", preset.id || cfg.id || "unknown");
+    console.log("[TwinStore] preset applied:", preset.display_name || preset.id, "via", source);
+    return true;
+  }
+
+  async function fetchPresetForSession(externalUserId) {
+    var endpoint = buildBackendUrl("/preset-for-session/" + encodeURIComponent(externalUserId));
+    if (!endpoint) return null;
+    try {
+      var res = await fetch(endpoint + "?shop=" + encodeURIComponent(getShopDomain()), {
+        method: "GET",
+        headers: { "ngrok-skip-browser-warning": "1" },
+      });
+      if (!res.ok) return null;
+      return await res.json();
+    } catch (_) { return null; }
+  }
+
+  async function pollAndApplyPreset(externalUserId, onApplied) {
+    for (var i = 0; i < PRESET_POLL_ATTEMPTS; i += 1) {
+      var data = await fetchPresetForSession(externalUserId);
+      if (data && data.preset) {
+        var applied = applyPreset(data.preset, "session");
+        if (applied && typeof onApplied === "function") onApplied(data);
+        return data;
+      }
+      await new Promise(function(r) { setTimeout(r, PRESET_POLL_INTERVAL_MS); });
+    }
+    return null;
+  }
+
+  // ---------- styles + toast ----------
+  var style = document.createElement("style");
+  style.textContent = `
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+    .amz-popup { font-family: "Inter", -apple-system, BlinkMacSystemFont, sans-serif;
+      position: fixed; bottom: 18px; right: 18px; width: 300px; max-width: calc(100vw - 36px);
+      z-index: 2147483646;
+      background: linear-gradient(145deg, #1a1f2e 0%, #0f1419 100%);
+      border-radius: 14px; overflow: hidden;
+      box-shadow: 0 16px 40px rgba(0,0,0,0.4), 0 0 0 1px rgba(255,153,0,0.18);
+      transform: translateY(20px); opacity: 0;
+      transition: transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.3s ease; }
+    .amz-popup.is-visible { transform: translateY(0); opacity: 1; }
+    .amz-popup::before { content: ""; position: absolute; top: 0; left: 0; right: 0; height: 2px;
+      background: linear-gradient(90deg, transparent, #FF9900, #FEBD69, #FF9900, transparent); }
+    .amz-popup__close { position: absolute; top: 8px; right: 8px; width: 22px; height: 22px; border-radius: 50%;
+      background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1); color: rgba(255,255,255,0.55);
+      font-size: 14px; line-height: 1; display: flex; align-items: center; justify-content: center;
+      cursor: pointer; transition: all 0.2s ease; z-index: 2; padding: 0; }
+    .amz-popup__close:hover { background: rgba(255,255,255,0.14); color: #fff; }
+    .amz-popup__body { padding: 16px 18px 16px; }
+    .amz-popup__title { margin: 0 0 6px; font-size: 14px; font-weight: 700; color: #fff; letter-spacing: -0.01em; line-height: 1.35; padding-right: 18px; }
+    .amz-popup__benefits { margin: 0 0 12px; padding: 0; list-style: none; font-size: 12px; color: rgba(255,255,255,0.72); line-height: 1.5; }
+    .amz-popup__benefits li { display: flex; align-items: flex-start; gap: 6px; padding: 2px 0; }
+    .amz-popup__benefits li::before { content: ""; flex: 0 0 auto; width: 5px; height: 5px; margin-top: 7px; border-radius: 50%; background: #FF9900; }
+    .amz-popup__cta { display: inline-flex; align-items: center; justify-content: center; gap: 6px; width: 100%;
+      background: linear-gradient(135deg, #FF9900, #FFB347); color: #232F3E; border: none; border-radius: 8px;
+      padding: 10px 14px; font-family: "Inter", sans-serif; font-size: 13px; font-weight: 700; cursor: pointer;
+      transition: all 0.2s ease; box-shadow: 0 4px 14px rgba(255,153,0,0.3); letter-spacing: -0.01em; }
+    .amz-popup__cta:hover { transform: translateY(-1px); box-shadow: 0 6px 20px rgba(255,153,0,0.45); }
+    .amz-popup__cta svg { width: 14px; height: 14px; }
+    .amz-toast { position: fixed; bottom: 18px; right: 18px; max-width: min(92vw, 420px); z-index: 2147483647;
+      padding: 14px 16px; border-radius: 12px; border: 1px solid rgba(255,153,0,0.3);
+      background: linear-gradient(135deg, rgba(35,47,62,0.97), rgba(18,28,40,0.97)); color: #fff;
+      box-shadow: 0 12px 28px rgba(0,0,0,0.35); font-family: "Inter", -apple-system, BlinkMacSystemFont, sans-serif; font-size: 14px; line-height: 1.4; }
+    .amz-toast strong { color: #FFB347; font-size: 16px; }
+    .amz-toast--error { border-color: rgba(255,110,110,0.35); }
+  `;
+  document.head.appendChild(style);
+
+  function showToast(html, isError) {
+    var node = document.createElement("div");
+    node.className = "amz-toast" + (isError ? " amz-toast--error" : "");
+    node.innerHTML = html;
+    document.body.appendChild(node);
+    setTimeout(function() { node.remove(); }, 9000);
+  }
+
+  // ---------- Knot SDK loader + discount helpers ----------
+  function loadKnotSdk() {
+    if (window.KnotapiJS && window.KnotapiJS.default) return Promise.resolve();
+    return new Promise(function(resolve, reject) {
+      var script = document.createElement("script");
+      script.src = "https://unpkg.com/knotapi-js@next";
+      script.async = true;
+      script.onload = function() { resolve(); };
+      script.onerror = function() { reject(new Error("Failed to load Knot SDK")); };
+      document.head.appendChild(script);
+    });
+  }
+
+  async function verifyKnotAccount(externalUserId) {
+    if (!externalUserId) return null;
+    var endpoint = buildApiUrl("/api/knot/accounts?externalUserId=" + encodeURIComponent(externalUserId) + "&merchantName=Amazon");
+    if (!endpoint) return null;
+    var r = await fetch(endpoint, { method: "GET" });
+    if (!r.ok) return null;
+    return r.json();
+  }
+
+  async function fetchWebhookDiscountCode(externalUserId) {
+    if (!externalUserId) return null;
+    var endpoint = buildApiUrl("/api/knot/discount?externalUserId=" + encodeURIComponent(externalUserId));
+    if (!endpoint) return null;
+    var r = await fetch(endpoint, { method: "GET" });
+    if (!r.ok) return null;
+    var data = await r.json();
+    return data && data.discountCode ? data.discountCode : null;
+  }
+
+  async function waitForWebhookDiscountCode(externalUserId) {
+    for (var i = 0; i < 5; i += 1) {
+      var code = await fetchWebhookDiscountCode(externalUserId);
+      if (code) return code;
+      await new Promise(function(r) { setTimeout(r, 1800); });
+    }
+    return null;
+  }
+
+  function showSuccessMessage(discountCode, presetName) {
+    var presetLine = presetName ? "<br><span>Your storefront just morphed to <strong>" + presetName + "</strong>.</span>" : "";
+    showToast("You're in. 5% code: <strong>" + discountCode + "</strong>" + presetLine, false);
+  }
+
+  // ---------- PAGE LOAD: apply preset if twin already exists ----------
+  var savedExternalUserId = localStorage.getItem("amz_external_user_id");
+  if (savedExternalUserId) {
+    fetchPresetForSession(savedExternalUserId).then(function(data) {
+      if (data && data.preset) applyPreset(data.preset, "cached-session");
+    });
+  }
+
+  // ---------- RETURN-FROM-SIGNUP: poll backend, apply, show discount ----------
+  var urlParams = new URL(window.location.href).searchParams;
+  var signupFlag = urlParams.get(SIGNUP_QUERY_KEY);
+  var returnExternalUserId = urlParams.get(USER_QUERY_KEY);
+  var savedDiscountCode = localStorage.getItem("amz_discount_code");
+
+  if (signupFlag === "1") {
+    var userForFlow = returnExternalUserId || savedExternalUserId;
+    if (userForFlow) {
+      localStorage.setItem("amz_external_user_id", userForFlow);
+      Promise.all([
+        waitForWebhookDiscountCode(userForFlow),
+        verifyKnotAccount(userForFlow).catch(function() { return null; }),
+        pollAndApplyPreset(userForFlow),
+      ]).then(function(results) {
+        var issuedCode = results[0];
+        var presetData = results[2];
+        var codeToShow = issuedCode || savedDiscountCode || DEFAULT_DISCOUNT_CODE;
+        localStorage.setItem("amz_discount_code", codeToShow);
+        var presetName = presetData && presetData.preset ? presetData.preset.display_name : null;
+        showSuccessMessage(codeToShow, presetName);
+      });
+    } else {
+      showSuccessMessage(savedDiscountCode || DEFAULT_DISCOUNT_CODE);
+    }
+    removeUrlParams([SIGNUP_QUERY_KEY, USER_QUERY_KEY, "merchant"]);
+  }
+
+  // ---------- SIGNUP POPUP (always shown, bottom-right corner) ----------
+  var popup = document.createElement("div");
+  popup.className = "amz-popup";
+  popup.innerHTML = `
+    <button class="amz-popup__close" aria-label="Close">&times;</button>
+    <div class="amz-popup__body">
+      <h2 class="amz-popup__title">Get 5% off + a personalized store</h2>
+      <ul class="amz-popup__benefits">
+        <li>5% off your first order</li>
+        <li>Storefront tuned to your taste</li>
+        <li>1-click link, no card needed</li>
+      </ul>
+      <button class="amz-popup__cta">
+        <svg viewBox="0 0 24 24" fill="currentColor">
+          <path d="M.045 18.02c.072-.116.187-.124.348-.022 2.344 1.47 4.934 2.204 7.77 2.204 1.89 0 3.673-.33 5.344-.99 1.672-.66 3.078-1.518 4.218-2.57.14-.13.26-.19.36-.19.14 0 .21.09.21.28 0 .12-.07.3-.21.52-.63.97-1.5 1.83-2.61 2.58-1.11.75-2.32 1.31-3.63 1.69-1.31.37-2.64.56-3.99.56-1.67 0-3.26-.3-4.77-.92C1.585 20.51.345 19.65.015 18.35c-.02-.08-.02-.14 0-.17l.03-.16z"/>
+        </svg>
+        Link Amazon
+      </button>
+    </div>
+  `;
+  document.body.appendChild(popup);
+
+  setTimeout(function() { popup.classList.add("is-visible"); }, 400);
+
+  function closePopup() {
+    popup.classList.remove("is-visible");
+    setTimeout(function() { popup.remove(); }, 400);
+  }
+
+  popup.querySelector(".amz-popup__close").addEventListener("click", closePopup);
+
+  var cta = popup.querySelector(".amz-popup__cta");
+  cta.addEventListener("click", async function(e) {
+    e.preventDefault();
+    try {
+      cta.disabled = true;
+      cta.style.opacity = "0.75";
+      cta.textContent = "Opening Amazon\u2026";
+
+      console.log("[TwinStore] CTA clicked — starting Knot flow");
+      console.log("[TwinStore] APP_BASE_URL setting:", APP_BASE_URL);
+      console.log("[TwinStore] normalizedAppBaseUrl():", normalizedAppBaseUrl());
+      console.log("[TwinStore] shop domain:", getShopDomain());
+
+      await loadKnotSdk();
+      console.log("[TwinStore] Knot SDK loaded");
+
+      var cleanUrl = window.location.origin + window.location.pathname + window.location.hash;
+      var returnUrl = withUrlParam(cleanUrl, SIGNUP_QUERY_KEY, "1");
+      var sessionEndpoint = buildApiUrl("/api/knot/session");
+      var requestBody = { shopDomain: getShopDomain(), returnUrl: returnUrl };
+
+      console.log("[TwinStore] POST", sessionEndpoint, "body:", requestBody);
+
+      var sessionResponse;
+      try {
+        sessionResponse = await fetch(sessionEndpoint, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "Accept": "application/json" },
+          body: JSON.stringify(requestBody),
+        });
+      } catch (netErr) {
+        console.error("[TwinStore] Network error calling session endpoint:", netErr);
+        throw new Error("Network error: " + (netErr && netErr.message ? netErr.message : "fetch failed") + " (endpoint: " + sessionEndpoint + ")");
+      }
+
+      console.log("[TwinStore] session response status:", sessionResponse.status, sessionResponse.statusText);
+      console.log("[TwinStore] session response content-type:", sessionResponse.headers.get("content-type"));
+
+      var contentType = sessionResponse.headers.get("content-type") || "";
+      var rawText = "";
+      try { rawText = await sessionResponse.text(); } catch (_) {}
+      console.log("[TwinStore] session response raw body:", rawText.slice(0, 1000));
+
+      var parsed = null;
+      if (contentType.indexOf("application/json") !== -1) {
+        try { parsed = JSON.parse(rawText); } catch (_) {}
+      }
+
+      if (!sessionResponse.ok) {
+        var msg = (parsed && (parsed.details || parsed.error)) || rawText.slice(0, 300);
+        if (!msg) msg = "HTTP " + sessionResponse.status;
+        if (parsed && parsed.runtime) {
+          console.error("[TwinStore] server runtime config:", parsed.runtime);
+          msg += " [hasClientId=" + parsed.runtime.hasClientId + ", hasSecret=" + parsed.runtime.hasSecret + "]";
+        }
+        throw new Error(msg);
+      }
+
+      if (!parsed) {
+        throw new Error("Server returned 200 but body was not JSON (content-type: " + contentType + "). First 200 chars: " + rawText.slice(0, 200));
+      }
+
+      var sessionData = parsed;
+      console.log("[TwinStore] session created:", sessionData);
+      var KnotapiJS = window.KnotapiJS.default;
+      var knotapi = new KnotapiJS();
+
+      knotapi.open({
+        sessionId: sessionData.sessionId,
+        clientId: sessionData.clientId,
+        environment: sessionData.environment,
+        merchantIds: sessionData.merchantIds,
+        entryPoint: "storefront_amazon_popup",
+        onSuccess: function(details) {
+          var redirectUrl = sessionData.returnUrl || returnUrl;
+          localStorage.setItem("amz_external_user_id", sessionData.externalUserId);
+          window.location.href = withUrlParam(
+            withUrlParam(redirectUrl, USER_QUERY_KEY, sessionData.externalUserId),
+            "merchant",
+            (details && details.merchantName) || "Amazon"
+          );
+        },
+        onError: function(code, message) {
+          cta.disabled = false; cta.style.opacity = ""; cta.textContent = "Link Amazon";
+          showToast("Knot error (" + code + "): " + message, true);
+        },
+        onExit: function() {
+          cta.disabled = false; cta.style.opacity = ""; cta.textContent = "Link Amazon";
+        },
+      });
+    } catch (error) {
+      cta.disabled = false; cta.style.opacity = ""; cta.textContent = "Link Amazon";
+      var m = (error && error.message) ? error.message : "Unknown error";
+      showToast("Unable to launch Amazon signup: " + m, true);
+      console.error("[Amazon Popup] Knot launch failed", error);
+    }
+  });
+})();
+</script>
+
+{% schema %}
+{
+  "name": "TwinStore Personalizer",
+  "target": "body",
+  "settings": [
+    {
+      "type": "text",
+      "id": "app_base_url",
+      "label": "Shopify App Proxy URL",
+      "default": "/apps/knot",
+      "info": "Used for Knot session + discount code endpoints. Leave as /apps/knot."
+    },
+    {
+      "type": "text",
+      "id": "twinstore_backend_url",
+      "label": "TwinStore Backend URL",
+      "default": "https://dbca-66-180-180-1.ngrok-free.app",
+      "info": "Full URL of the FastAPI backend. Required for storefront personalization."
+    },
+    {
+      "type": "text",
+      "id": "discount_code",
+      "label": "Fallback Discount Code",
+      "default": "AMAZON5"
+    }
+  ]
+}
+{% endschema %}
