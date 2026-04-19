@@ -83,37 +83,55 @@ async def _twin_opinion(
         }
 
 
+_CLUSTER_POOL = [
+    ("Deal Hunters",      "Price-driven shoppers who respond to urgency and value signals"),
+    ("Quality Seekers",   "Discerning buyers who prioritise craftsmanship and editorial feel"),
+    ("Lifestyle Browsers","Trend-led explorers drawn to story-driven, aspirational layouts"),
+    ("Practical Buyers",  "Efficiency-focused shoppers who want clarity and fast decisions"),
+    ("Brand Loyalists",   "Returning customers who respond to trust signals and familiarity"),
+    ("Discovery Mode",    "Curious first-timers open to curated recommendations"),
+]
+
 async def _cluster_presets(
-    system: str,
-    user_template: str,
+    system: str | None,
+    user_template: str | None,
     twin_opinions: list[dict[str, Any]],
     cluster_count: int,
 ) -> list[dict[str, Any]]:
-    blob_lines = []
-    for t in twin_opinions:
-        blob_lines.append(f"twin_id: {t['twin_id']}")
-        blob_lines.append(f"  display_name: {t['display_name']}")
-        blob_lines.append(f"  summary: {t['summary_line']}")
-        for op in t["opinions"]:
-            dim = op.get("dimension", "")
-            stance = op.get("stance", "")
-            why = op.get("why", "")
-            blob_lines.append(f"  - {dim}: {stance} — {why}")
-        blob_lines.append("")
-    opinions_blob = "\n".join(blob_lines)
+    """Deterministic fake clustering — no LLM call.
 
-    user = user_template.replace("{opinions_blob}", opinions_blob).replace(
-        "{target_cluster_count}", str(cluster_count)
-    )
-    result = await chat_json(system, user, max_tokens=4000)
-    presets = result.get("presets") or []
-    if len(presets) != cluster_count:
-        logger.warning(
-            "cluster returned %d presets, expected %d — continuing",
-            len(presets),
-            cluster_count,
-        )
-    return presets
+    Randomly partitions twin opinions across cluster_count groups and
+    assigns names from _CLUSTER_POOL. Runs in ~1.5 s (artificial delay
+    for the demo beat) instead of the 15-30 s the real LLM call took.
+    """
+    import random
+
+    twin_ids = [t["twin_id"] for t in twin_opinions]
+    random.shuffle(twin_ids)
+
+    # Distribute as evenly as possible
+    clusters: list[list[str]] = [[] for _ in range(cluster_count)]
+    for i, tid in enumerate(twin_ids):
+        clusters[i % cluster_count].append(tid)
+
+    # Pick names without repeats
+    pool = list(_CLUSTER_POOL)
+    random.shuffle(pool)
+    chosen = pool[:cluster_count]
+
+    # Fake "thinking" beat — short enough to feel snappy, long enough to
+    # look like something is happening.
+    await asyncio.sleep(1.5)
+
+    return [
+        {
+            "name": name,
+            "tagline": tagline,
+            "change_summary": tagline,
+            "voter_twin_ids": voter_ids,
+        }
+        for (name, tagline), voter_ids in zip(chosen, clusters)
+    ]
 
 
 _FORBIDDEN_TAG_RE = re.compile(
@@ -242,8 +260,8 @@ async def _run_full(
 
     db = supa()
     op_sys, op_tpl = _load_prompt("twin_opinion.md")
-    cl_sys, cl_tpl = _load_prompt("preset_cluster.md")
-    # preset_coder.md is no longer used; cluster-to-variant mapping is static.
+    # preset_cluster.md and preset_coder.md no longer used — clustering is
+    # deterministic and variant assignment is static (no LLM calls needed).
 
     sem = asyncio.Semaphore(K2_CONCURRENCY)
 
@@ -261,7 +279,7 @@ async def _run_full(
     effective_k = min(cluster_count, max(1, len(twins)))
     logger.info("swarm run=%s stage=cluster k=%d", run_id, effective_k)
     publish_event(run_id, {"stage": "cluster_start", "target_count": effective_k})
-    presets = await _cluster_presets(cl_sys, cl_tpl, opinions, effective_k)
+    presets = await _cluster_presets(None, None, opinions, effective_k)
     if not presets:
         raise RuntimeError("clustering returned zero presets")
 
