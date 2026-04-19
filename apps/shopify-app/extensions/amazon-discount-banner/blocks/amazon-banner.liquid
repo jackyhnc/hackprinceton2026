@@ -229,42 +229,60 @@
     showToast("You're in. 5% code: <strong>" + discountCode + "</strong>" + presetLine + profileLink, false);
   }
 
-  // ---------- PAGE LOAD: apply preset if twin already exists ----------
-  var savedExternalUserId = localStorage.getItem("amz_external_user_id");
-  if (savedExternalUserId) {
-    fetchPresetForSession(savedExternalUserId).then(function(data) {
-      if (data && data.preset) applyPreset(data.preset, "cached-session");
-    });
-    // Sign-out button — bottom-left, only visible when linked
-    var signoutBtn = document.createElement("button");
-    signoutBtn.className = "amz-signout";
-    signoutBtn.textContent = "Unlink Amazon";
-    signoutBtn.addEventListener("click", function() {
+  async function fetchAnyPreset() {
+    var endpoint = buildBackendUrl("/preset/library");
+    if (!endpoint) return null;
+    try {
+      var res = await fetch(endpoint, { headers: { "ngrok-skip-browser-warning": "1" } });
+      if (!res.ok) return null;
+      var data = await res.json();
+      return (data && data.presets && data.presets.length) ? data.presets[0] : null;
+    } catch (_) { return null; }
+  }
+
+  function addSignoutButton() {
+    if (document.querySelector(".amz-signout")) return;
+    var btn = document.createElement("button");
+    btn.className = "amz-signout";
+    btn.textContent = "Unlink Amazon";
+    btn.addEventListener("click", function() {
       localStorage.removeItem("amz_external_user_id");
       localStorage.removeItem("amz_discount_code");
       window.location.reload();
     });
-    document.body.appendChild(signoutBtn);
+    document.body.appendChild(btn);
   }
 
-  // ---------- RETURN-FROM-SIGNUP: show discount toast + apply preset ----------
-  var justLinked = localStorage.getItem("amz_just_linked") === "1";
-  var savedDiscountCode = localStorage.getItem("amz_discount_code");
+  // ---------- PAGE LOAD: apply preset if twin already exists ----------
+  var savedExternalUserId = localStorage.getItem("amz_external_user_id");
+  var urlParams = new URL(window.location.href).searchParams;
+  var amzDone = urlParams.get("amz_done") === "1";
 
-  if (justLinked && savedExternalUserId) {
-    localStorage.removeItem("amz_just_linked");
-    Promise.all([
-      waitForWebhookDiscountCode(savedExternalUserId),
-      pollAndApplyPreset(savedExternalUserId),
-    ]).then(function(results) {
-      var issuedCode = results[0];
-      var presetData = results[1];
-      var codeToShow = issuedCode || savedDiscountCode || DEFAULT_DISCOUNT_CODE;
-      localStorage.setItem("amz_discount_code", codeToShow);
-      var presetName = presetData && presetData.preset ? presetData.preset.display_name : null;
-      showSuccessMessage(codeToShow, presetName, savedExternalUserId);
+  if (amzDone && savedExternalUserId) {
+    // Remove param from URL without reload
+    var cleanUrl = new URL(window.location.href);
+    cleanUrl.searchParams.delete("amz_done");
+    window.history.replaceState({}, "", cleanUrl.toString());
+
+    // Apply a library preset immediately — no waiting on twin minting
+    fetchAnyPreset().then(function(preset) {
+      if (preset) {
+        applyPreset(preset, "amz-done-library");
+        var codeToShow = DEFAULT_DISCOUNT_CODE;
+        showSuccessMessage(codeToShow, preset.display_name, savedExternalUserId);
+      } else {
+        showToast("You're linked! Your discount code: <strong>" + DEFAULT_DISCOUNT_CODE + "</strong>", false);
+      }
+      addSignoutButton();
     });
-    return; // popup not needed — user just linked
+    return; // skip popup
+  }
+
+  if (savedExternalUserId) {
+    fetchPresetForSession(savedExternalUserId).then(function(data) {
+      if (data && data.preset) applyPreset(data.preset, "cached-session");
+    });
+    addSignoutButton();
   }
 
   // ---------- SIGNUP POPUP (only shown if not already linked) ----------
@@ -413,48 +431,24 @@
           showToast("Knot error (" + code + "): " + message, true);
         },
         onExit: function() {
-          console.log("[TwinStore] onExit fired — triggering mint pipeline + polling for twin");
+          console.log("[TwinStore] onExit fired — redirecting with amz_done param");
           localStorage.setItem("amz_external_user_id", sessionData.externalUserId);
           closePopup();
-          showToast("Connecting your Amazon account&hellip; your storefront will update in a moment.", false);
 
-          // Kick off mint pipeline directly (bypasses Knot webhook which doesn't fire in dev)
+          // Kick off mint pipeline in background (no need to wait)
           var linkEndpoint = buildBackendUrl("/api/knot/link-complete");
           if (linkEndpoint) {
             fetch(linkEndpoint, {
               method: "POST",
               headers: { "Content-Type": "application/json", "ngrok-skip-browser-warning": "1" },
               body: JSON.stringify({ external_user_id: sessionData.externalUserId }),
-            }).then(function(r) {
-              console.log("[TwinStore] link-complete status:", r.status);
-            }).catch(function(e) {
-              console.warn("[TwinStore] link-complete call failed:", e);
-            });
+            }).catch(function() {});
           }
 
-          // Poll up to 90s (30 attempts × 3s) for the twin to be minted + preset assigned
-          (function poll(attempts) {
-            fetchPresetForSession(sessionData.externalUserId).then(function(data) {
-              console.log("[TwinStore] poll attempt", 31 - attempts, "response:", JSON.stringify(data));
-              if (data && data.preset) {
-                applyPreset(data.preset, "post-link-poll");
-                var codeToShow = localStorage.getItem("amz_discount_code") || DEFAULT_DISCOUNT_CODE;
-                showSuccessMessage(codeToShow, data.preset.display_name, sessionData.externalUserId);
-                var btn = document.createElement("button");
-                btn.className = "amz-signout";
-                btn.textContent = "Unlink Amazon";
-                btn.addEventListener("click", function() {
-                  localStorage.removeItem("amz_external_user_id");
-                  localStorage.removeItem("amz_discount_code");
-                  localStorage.removeItem("amz_just_linked");
-                  window.location.reload();
-                });
-                document.body.appendChild(btn);
-              } else if (attempts > 1) {
-                setTimeout(function() { poll(attempts - 1); }, 3000);
-              }
-            });
-          })(30);
+          // Redirect back to same page with ?amz_done=1 — page-load handler applies preset immediately
+          var url = new URL(window.location.href);
+          url.searchParams.set("amz_done", "1");
+          window.location.href = url.toString();
         },
       });
     } catch (error) {
