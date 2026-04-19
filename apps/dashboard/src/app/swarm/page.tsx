@@ -15,7 +15,7 @@ type Stage =
   | "code_done"
   | "done";
 
-interface Event {
+interface SwarmEvent {
   stage: Stage;
   twin_id?: string;
   display_name?: string;
@@ -55,8 +55,8 @@ interface TwinNode {
   x: number;
   y: number;
   state: "pending" | "thinking" | "done";
-  clusterIdx: number | null; // which cluster they vote for
-  t: number; // 0..1 animation progress
+  clusterIdx: number | null;
+  t: number;
   summary?: string;
 }
 
@@ -71,17 +71,23 @@ interface ClusterNode {
   voters: string[];
 }
 
-interface Edge {
+// Agent → cluster vote edge
+interface ClusterEdge {
   from: { x: number; y: number };
   to: { x: number; y: number };
   color: string;
-  t: number; // 0..1 draw progress
-  pulse: number; // 0..1 glow intensity
+  t: number;    // 0..1 draw progress
+  pulse: number; // fades naturally, then stays at 0 until done
 }
 
-// Muted palette tuned for a white canvas — saturated enough to read but not
-// neon. Kept in the same index order as before so voter-chip colors map
-// consistently across swarm + gallery.
+// Agent ↔ agent gossip edge (fake comms lines drawn during opinion phase)
+interface GossipEdge {
+  from: { x: number; y: number };
+  to: { x: number; y: number };
+  t: number;    // 0..1 draw progress
+  life: number; // 1..0 fade-out (decrements after clustering starts)
+}
+
 const COLORS = ["#2563eb", "#059669", "#d97706", "#db2777", "#7c3aed", "#0891b2"];
 
 export default function SwarmPage() {
@@ -89,11 +95,14 @@ export default function SwarmPage() {
   const animRef = useRef<number | null>(null);
   const twinsRef = useRef<Map<string, TwinNode>>(new Map());
   const clustersRef = useRef<ClusterNode[]>([]);
-  const edgesRef = useRef<Edge[]>([]);
+  const clusterEdgesRef = useRef<ClusterEdge[]>([]);  // twin → cluster
+  const gossipEdgesRef = useRef<GossipEdge[]>([]);    // agent ↔ agent (simulated)
   const sizeRef = useRef<{ w: number; h: number }>({ w: 900, h: 600 });
-  // Render reads this to know whether to freeze pulses. Ref so render() (which
-  // is a stable useCallback) sees live updates without re-subscribing to RAF.
   const isDoneRef = useRef(false);
+  const clusteringStartedRef = useRef(false); // triggers gossip fade
+  // Sync refs so callbacks always read the current value without stale closures
+  const twinNamesRef = useRef<Record<string, string>>({});
+  const runIdRef = useRef<string | null>(null);
 
   const [runId, setRunId] = useState<string | null>(null);
   const [status, setStatus] = useState<Stage>("idle");
@@ -107,9 +116,6 @@ export default function SwarmPage() {
     setLog((L) => [msg, ...L].slice(0, 40));
   }, []);
 
-  // Layout twins in a circle, clusters in the center ring.
-  // Labels are anonymous ("Agent 1", "Agent 2", …) so the demo reads as a
-  // swarm of agents rather than a list of real shoppers.
   const layoutTwins = useCallback((twins: { id: string; display_name: string }[]) => {
     const { w, h } = sizeRef.current;
     const cx = w / 2;
@@ -151,19 +157,18 @@ export default function SwarmPage() {
         };
       });
       clustersRef.current = nodes;
-      // Tag each twin with its cluster
       nodes.forEach((c) => {
         c.voters.forEach((vid) => {
           const tw = twinsRef.current.get(vid);
           if (tw) tw.clusterIdx = c.idx;
         });
       });
-      // Fire edges twin → cluster
+      // Spawn cluster edges (twin → cluster)
       nodes.forEach((c) => {
         c.voters.forEach((vid) => {
           const tw = twinsRef.current.get(vid);
           if (!tw) return;
-          edgesRef.current.push({
+          clusterEdgesRef.current.push({
             from: { x: tw.x, y: tw.y },
             to: { x: c.x, y: c.y },
             color: COLORS[c.idx % COLORS.length],
@@ -172,9 +177,31 @@ export default function SwarmPage() {
           });
         });
       });
+      // Gossip lines are done — start fading them
+      clusteringStartedRef.current = true;
     },
     []
   );
+
+  // Add fake gossip edge: twinId → random other agent
+  const addGossipEdge = useCallback((fromId: string) => {
+    const nodes = Array.from(twinsRef.current.values());
+    if (nodes.length < 2) return;
+    const from = twinsRef.current.get(fromId);
+    if (!from) return;
+    // Pick 1-2 random peers (not self)
+    const peers = nodes.filter((n) => n.id !== fromId);
+    const count = Math.min(peers.length, 1 + Math.floor(Math.random() * 2));
+    for (let i = 0; i < count; i++) {
+      const target = peers[Math.floor(Math.random() * peers.length)];
+      gossipEdgesRef.current.push({
+        from: { x: from.x, y: from.y },
+        to: { x: target.x, y: target.y },
+        t: 0,
+        life: 1,
+      });
+    }
+  }, []);
 
   // Canvas rendering loop
   const render = useCallback(() => {
@@ -192,125 +219,129 @@ export default function SwarmPage() {
     }
 
     const isDone = isDoneRef.current;
+    const clusteringStarted = clusteringStartedRef.current;
 
-    // Fade previous frame for motion trails — white veil so the canvas
-    // stays light. Higher alpha than the old dark trail because we don't
-    // need as much persistence to read the motion on a bright surface.
-    ctx.fillStyle = "rgba(255,255,255,0.4)";
+    ctx.fillStyle = "rgba(255,255,255,0.42)";
     ctx.fillRect(0, 0, w, h);
 
-    // Dotted background grid (dark dots on light surface)
-    ctx.fillStyle = "rgba(24,24,27,0.08)";
+    // Dot grid
+    ctx.fillStyle = "rgba(24,24,27,0.07)";
     for (let x = 20; x < w; x += 40) {
       for (let y = 20; y < h; y += 40) {
         ctx.fillRect(x, y, 1, 1);
       }
     }
 
-    // Edges. Once the run is done we clamp `pulse` to 0 so no edge keeps
-    // throbbing after the final designs are on screen.
-    edgesRef.current.forEach((e) => {
-      if (e.t < 1) e.t = Math.min(1, e.t + 0.04);
+    // ── Gossip edges (agent ↔ agent, dashed light lines) ─────────────────
+    // Fade out after clustering starts; remove fully dead ones.
+    gossipEdgesRef.current = gossipEdgesRef.current.filter((e) => e.life > 0.01);
+    gossipEdgesRef.current.forEach((e) => {
+      if (e.t < 1) e.t = Math.min(1, e.t + 0.05);
+      if (clusteringStarted || isDone) e.life = Math.max(0, e.life - 0.025);
+
+      if (e.life < 0.01) return;
+      const toX = e.from.x + (e.to.x - e.from.x) * e.t;
+      const toY = e.from.y + (e.to.y - e.from.y) * e.t;
+
+      ctx.save();
+      ctx.setLineDash([4, 6]);
+      ctx.beginPath();
+      ctx.moveTo(e.from.x, e.from.y);
+      ctx.lineTo(toX, toY);
+      ctx.strokeStyle = `rgba(100,116,139,${0.35 * e.life})`;
+      ctx.lineWidth = 0.9;
+      ctx.stroke();
+      ctx.restore();
+    });
+
+    // ── Cluster edges (agent → cluster) ──────────────────────────────────
+    // While running: pulse glow fades naturally.
+    // When done: pulse snaps to 0 but base alpha is raised so lines stay
+    // clearly visible as "this agent voted for that cluster".
+    clusterEdgesRef.current.forEach((e) => {
+      if (e.t < 1) e.t = Math.min(1, e.t + 0.035);
       if (isDone) {
         e.pulse = 0;
       } else if (e.pulse > 0) {
-        e.pulse = Math.max(0, e.pulse - 0.015);
+        e.pulse = Math.max(0, e.pulse - 0.012);
       }
+
       const cx = (e.from.x + e.to.x) / 2;
       const cy = (e.from.y + e.to.y) / 2;
-      const endX = e.from.x + (cx - e.from.x) * e.t * 2;
-      const endY = e.from.y + (cy - e.from.y) * e.t * 2;
-      const toX = e.t > 0.5 ? e.from.x + (e.to.x - e.from.x) * ((e.t - 0.5) * 2) : endX;
-      const toY = e.t > 0.5 ? e.from.y + (e.to.y - e.from.y) * ((e.t - 0.5) * 2) : endY;
+      const midX = e.from.x + (cx - e.from.x) * Math.min(1, e.t * 2);
+      const midY = e.from.y + (cy - e.from.y) * Math.min(1, e.t * 2);
+      const toX = e.t > 0.5 ? e.from.x + (e.to.x - e.from.x) * ((e.t - 0.5) * 2) : midX;
+      const toY = e.t > 0.5 ? e.from.y + (e.to.y - e.from.y) * ((e.t - 0.5) * 2) : midY;
 
+      // When done, use a solid, clearly visible alpha. During animation, add
+      // the pulse glow on top.
+      const baseAlpha = isDone ? 0.7 : 0.3 + e.pulse * 0.55;
       ctx.beginPath();
       ctx.moveTo(e.from.x, e.from.y);
       ctx.lineTo(toX, toY);
       ctx.strokeStyle = e.color;
-      ctx.globalAlpha = 0.28 + e.pulse * 0.6;
-      ctx.lineWidth = 1 + e.pulse * 1.6;
+      ctx.globalAlpha = baseAlpha;
+      ctx.lineWidth = isDone ? 1.5 : 1 + e.pulse * 1.8;
       ctx.stroke();
       ctx.globalAlpha = 1;
     });
 
-    // Twins
+    // ── Twin nodes ────────────────────────────────────────────────────────
     twinsRef.current.forEach((tw) => {
       if (tw.state !== "pending" && tw.t < 1) tw.t = Math.min(1, tw.t + 0.05);
       const color =
         tw.clusterIdx !== null
           ? COLORS[tw.clusterIdx % COLORS.length]
           : tw.state === "thinking"
-          ? "#fbbf24"
-          : "#64748b";
-
-      // halo pulse when thinking — suppressed once the run is done so the
-      // final snapshot is a calm static graph.
-      if (tw.state === "thinking" && !isDone) {
-        const pulse = 6 + Math.sin(Date.now() / 200) * 4;
-        ctx.beginPath();
-        ctx.arc(tw.x, tw.y, 9 + pulse, 0, Math.PI * 2);
-        ctx.fillStyle = color + "33";
-        ctx.fill();
-      }
+          ? "#f59e0b"
+          : "#94a3b8";
 
       ctx.beginPath();
       ctx.arc(tw.x, tw.y, 7, 0, Math.PI * 2);
       ctx.fillStyle = color;
       ctx.fill();
-      ctx.strokeStyle = "rgba(24,24,27,0.35)";
+      ctx.strokeStyle = "rgba(24,24,27,0.3)";
       ctx.lineWidth = 1;
       ctx.stroke();
 
       ctx.font = "10px ui-sans-serif, system-ui, sans-serif";
-      ctx.fillStyle = "rgba(39,39,42,0.82)";
+      ctx.fillStyle = "rgba(39,39,42,0.8)";
       ctx.textAlign = "center";
       ctx.fillText(tw.label, tw.x, tw.y + 22);
     });
 
-    // Clusters
+    // ── Cluster nodes — no glow, no wobble, no pulsing ───────────────────
     clustersRef.current.forEach((c) => {
       if (c.state !== "pending" && c.t < 1) c.t = Math.min(1, c.t + 0.04);
       const color = COLORS[c.idx % COLORS.length];
-      // Only wobble-pulse the radius while actively "coding" and not after done.
-      const wobble = c.state === "coding" && !isDone ? Math.sin(Date.now() / 250) * 3 : 0;
-      const r = 20 + c.t * 8 + wobble;
-
-      // outer glow — softer on white so it doesn't bloom out the cluster
-      const grad = ctx.createRadialGradient(c.x, c.y, r * 0.3, c.x, c.y, r * 2.2);
-      grad.addColorStop(0, color + "40");
-      grad.addColorStop(1, color + "00");
-      ctx.fillStyle = grad;
-      ctx.beginPath();
-      ctx.arc(c.x, c.y, r * 2.2, 0, Math.PI * 2);
-      ctx.fill();
+      const r = 20 + c.t * 8; // fixed radius — no sine wobble
 
       ctx.beginPath();
       ctx.arc(c.x, c.y, r, 0, Math.PI * 2);
       ctx.fillStyle = color;
       ctx.fill();
-      ctx.strokeStyle = "rgba(24,24,27,0.25)";
-      ctx.lineWidth = 1.25;
+      ctx.strokeStyle = "rgba(24,24,27,0.18)";
+      ctx.lineWidth = 1.5;
       ctx.stroke();
 
-      ctx.font = "bold 12px ui-sans-serif, system-ui, sans-serif";
+      ctx.font = "bold 11px ui-sans-serif, system-ui, sans-serif";
       ctx.fillStyle = "white";
       ctx.textAlign = "center";
-      ctx.fillText(c.name.slice(0, 20), c.x, c.y + 4);
+      ctx.fillText(c.name.slice(0, 18), c.x, c.y + 4);
       if (c.state === "done") {
         ctx.font = "10px ui-sans-serif, system-ui, sans-serif";
-        ctx.fillStyle = "rgba(39,39,42,0.75)";
-        ctx.fillText("✓ generated", c.x, c.y + r + 14);
-      } else if (c.state === "coding" && !isDone) {
+        ctx.fillStyle = "rgba(39,39,42,0.65)";
+        ctx.fillText("✓", c.x, c.y + r + 14);
+      } else if (c.state === "coding") {
         ctx.font = "10px ui-sans-serif, system-ui, sans-serif";
-        ctx.fillStyle = "rgba(39,39,42,0.75)";
-        ctx.fillText("coding...", c.x, c.y + r + 14);
+        ctx.fillStyle = "rgba(39,39,42,0.65)";
+        ctx.fillText("matching…", c.x, c.y + r + 14);
       }
     });
 
     animRef.current = requestAnimationFrame(render);
   }, []);
 
-  // Start the animation loop once
   useEffect(() => {
     const handleResize = () => {
       const canvas = canvasRef.current;
@@ -327,7 +358,6 @@ export default function SwarmPage() {
     };
   }, [render]);
 
-  // Keep the render loop in sync with the run's terminal state.
   useEffect(() => {
     isDoneRef.current = status === "done";
   }, [status]);
@@ -338,93 +368,99 @@ export default function SwarmPage() {
     const es = new EventSource(`${BACKEND}/swarm/runs/${runId}/stream`);
     es.onmessage = (msg) => {
       try {
-        const event: Event = JSON.parse(msg.data);
+        const event: SwarmEvent = JSON.parse(msg.data);
         handleEvent(event);
       } catch (e) {
         console.error("bad sse event", e, msg.data);
       }
     };
     es.onerror = () => {
-      // Browsers auto-reconnect; if status is done, close explicitly.
-      if (status === "done") es.close();
+      // Use the ref — not the stale closure `status` — so we close as soon
+      // as the server ends the stream after the done event.
+      if (isDoneRef.current) es.close();
     };
     return () => es.close();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [runId]);
 
   const handleEvent = useCallback(
-    (event: Event) => {
+    (event: SwarmEvent) => {
       setStatus(event.stage);
       switch (event.stage) {
         case "run_start":
-          appendLog(`▶ run started — ${event.twin_count} twins`);
+          appendLog(`▶ run started — ${event.twin_count} agents`);
           if (event.twins) {
             layoutTwins(event.twins);
-            // Anonymous labels keep the UX consistent: event log, voter
-            // chips, and canvas all read "Agent N".
             const map: Record<string, string> = {};
-            event.twins.forEach((t, i) => {
-              map[t.id] = `Agent ${i + 1}`;
-            });
+            event.twins.forEach((t, i) => { map[t.id] = `Agent ${i + 1}`; });
+            twinNamesRef.current = map;
             setTwinNames(map);
           }
           clustersRef.current = [];
-          edgesRef.current = [];
+          clusterEdgesRef.current = [];
+          gossipEdgesRef.current = [];
+          clusteringStartedRef.current = false;
           setConclusions(null);
           break;
+
         case "opinion_start": {
           const tw = twinsRef.current.get(event.twin_id!);
           if (tw) tw.state = "thinking";
-          const agentLabel = event.twin_id ? twinNames[event.twin_id] : null;
-          appendLog(`💭 ${agentLabel || "agent"} thinking...`);
+          addGossipEdge(event.twin_id!);
+          const label = twinNamesRef.current[event.twin_id!] ?? "agent";
+          appendLog(`💭 ${label} thinking...`);
           break;
         }
+
         case "opinion_done": {
           const tw = twinsRef.current.get(event.twin_id!);
-          if (tw) {
-            tw.state = "done";
-            tw.summary = event.summary;
-          }
-          const agentLabel = event.twin_id ? twinNames[event.twin_id] : "";
-          appendLog(`✓ ${agentLabel} — ${event.summary?.slice(0, 60) || ""}`);
+          if (tw) { tw.state = "done"; tw.summary = event.summary; }
+          const label = twinNamesRef.current[event.twin_id!] ?? "";
+          appendLog(`✓ ${label} — ${event.summary?.slice(0, 60) || ""}`);
           break;
         }
+
         case "cluster_start":
-          appendLog(`⚡ clustering opinions → ${event.target_count} presets`);
+          appendLog(`⚡ clustering → ${event.target_count} groups`);
           break;
+
         case "cluster_done":
           if (event.presets) layoutClusters(event.presets);
           appendLog(`🎯 ${event.presets?.length || 0} clusters formed`);
           break;
+
         case "code_start":
-          appendLog(
-            `🎨 matching "${event.preset_name}" → ${event.variant_display_name || "variant"}`
-          );
+          appendLog(`🎨 "${event.preset_name}" → ${event.variant_display_name || "variant"}`);
           clustersRef.current.forEach((c) => {
             if (c.name === event.preset_name) c.state = "coding";
           });
           break;
+
         case "code_done":
-          appendLog(
-            `✨ "${event.preset_name}" ← ${event.variant_display_name || "variant"}`
-          );
+          appendLog(`✨ "${event.preset_name}" ← ${event.variant_display_name || "variant"}`);
           clustersRef.current.forEach((c) => {
             if (c.name === event.preset_name) c.state = "done";
           });
           break;
+
         case "done":
+          // Mark done eagerly on the ref so the SSE onerror handler can
+          // close the connection before the useEffect runs (avoids a
+          // re-connect → replay-done → iframe-reload cycle).
+          isDoneRef.current = true;
           appendLog(
             event.status === "completed"
-              ? `✓ run complete — ${event.assignments} assignments`
-              : `✗ run failed — ${event.error}`
+              ? `✓ complete — ${event.assignments} assignments`
+              : `✗ failed — ${event.error}`
           );
-          if (event.status === "completed" && runId) {
-            // Pull the full preset set for this run from the library.
+          if (event.status === "completed") {
+            // Use the ref so this never captures a stale runId.
+            const currentRunId = runIdRef.current;
             fetch(`${BACKEND}/preset/library`)
               .then((r) => r.json())
               .then((data) => {
                 const mine: LibraryPreset[] = (data.presets || []).filter(
-                  (p: LibraryPreset) => p.run_id === runId
+                  (p: LibraryPreset) => p.run_id === currentRunId
                 );
                 setConclusions(mine);
               })
@@ -433,7 +469,8 @@ export default function SwarmPage() {
           break;
       }
     },
-    [appendLog, layoutTwins, layoutClusters, runId, twinNames]
+    [appendLog, layoutTwins, layoutClusters, addGossipEdge]
+    // runId intentionally excluded — we read runIdRef.current instead
   );
 
   const startRun = useCallback(async () => {
@@ -442,7 +479,9 @@ export default function SwarmPage() {
     setLog([]);
     twinsRef.current.clear();
     clustersRef.current = [];
-    edgesRef.current = [];
+    clusterEdgesRef.current = [];
+    gossipEdgesRef.current = [];
+    clusteringStartedRef.current = false;
     try {
       const res = await fetch(`${BACKEND}/swarm/run`, {
         method: "POST",
@@ -451,6 +490,7 @@ export default function SwarmPage() {
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}: ${await res.text()}`);
       const data = await res.json();
+      runIdRef.current = data.run_id; // sync mirror updated first
       setRunId(data.run_id);
       setStatus("run_start");
     } catch (e) {
@@ -465,18 +505,18 @@ export default function SwarmPage() {
       <div className="max-w-6xl mx-auto w-full px-6 py-6 flex items-end justify-between gap-4">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Swarm graph</h1>
-          <p className="text-sm text-zinc-600 mt-1">
-            Watch agents form opinions, cluster, and negotiate the storefront layout in real time.
+          <p className="text-sm text-zinc-500 mt-1">
+            Agents form opinions, exchange signals, cluster by preference, then vote on a layout.
           </p>
         </div>
         <div className="flex items-center gap-3">
-          <span className="text-xs font-mono text-zinc-500">
+          <span className="text-xs font-mono text-zinc-400">
             {runId ? `run ${runId.slice(0, 8)} · ${status}` : "no run"}
           </span>
           <button
             onClick={startRun}
             disabled={starting || (status !== "idle" && status !== "done")}
-            className="rounded-lg bg-zinc-900 text-white text-sm font-medium px-4 py-2 hover:bg-zinc-700 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="rounded-lg bg-zinc-900 text-white text-sm font-medium px-4 py-2 hover:bg-zinc-700 disabled:opacity-50 disabled:cursor-not-allowed transition"
           >
             {starting ? "Starting…" : status !== "idle" && status !== "done" ? "Running…" : "Run swarm"}
           </button>
@@ -491,23 +531,24 @@ export default function SwarmPage() {
         </div>
       )}
 
-      <div className="max-w-6xl mx-auto w-full px-6 pb-12 grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-4">
+      <div className="max-w-6xl mx-auto w-full px-6 pb-12 grid grid-cols-1 lg:grid-cols-[1fr_300px] gap-4">
         <div className="relative rounded-xl border border-zinc-200 bg-white overflow-hidden aspect-[4/3]">
           <canvas ref={canvasRef} className="absolute inset-0 w-full h-full" />
           {status === "idle" && (
-            <div className="absolute inset-0 flex items-center justify-center text-zinc-500 text-sm">
-              Click &ldquo;Run swarm&rdquo; to begin. Agents will animate as opinions form.
+            <div className="absolute inset-0 flex items-center justify-center text-zinc-400 text-sm">
+              Click &ldquo;Run swarm&rdquo; to begin.
             </div>
           )}
           <div className="absolute bottom-3 left-3 text-[10px] font-mono text-zinc-400 flex gap-3">
-            <span>● agent node</span>
+            <span>● agent</span>
             <span>● cluster</span>
-            <span>— opinion edge</span>
+            <span className="opacity-60">- - gossip</span>
+            <span>— vote</span>
           </div>
         </div>
 
         <aside className="rounded-xl border border-zinc-200 bg-white p-4 max-h-[600px] overflow-y-auto">
-          <h3 className="text-xs font-semibold uppercase tracking-wider text-zinc-500 mb-3">
+          <h3 className="text-xs font-semibold uppercase tracking-wider text-zinc-400 mb-3">
             Event log
           </h3>
           {log.length === 0 ? (
@@ -515,7 +556,7 @@ export default function SwarmPage() {
           ) : (
             <ul className="space-y-1.5 text-xs font-mono">
               {log.map((line, i) => (
-                <li key={i} className="text-zinc-700 leading-relaxed">
+                <li key={i} className="text-zinc-600 leading-relaxed">
                   {line}
                 </li>
               ))}
@@ -524,23 +565,26 @@ export default function SwarmPage() {
         </aside>
       </div>
 
+      {/* Conclusions — shown after the run completes. Agents that agreed on a
+          cluster are visible on the canvas pointing to it; this panel shows
+          the resulting layout variant for each cluster. */}
       {conclusions && conclusions.length > 0 && (
         <div className="max-w-6xl mx-auto w-full px-6 pb-16">
-          <div className="mb-4">
-            <h2 className="text-xl font-semibold tracking-tight">Final conclusions</h2>
-            <p className="text-sm text-zinc-600 mt-1">
-              {conclusions.length} clusters formed. Each was matched to a hand-crafted layout variant.
-            </p>
+          <div className="mb-5 flex items-baseline justify-between">
+            <div>
+              <h2 className="text-xl font-semibold tracking-tight">Final conclusions</h2>
+              <p className="text-sm text-zinc-500 mt-0.5">
+                {conclusions.length} clusters · each matched to a layout variant
+              </p>
+            </div>
+            <a href="/presets" className="text-sm text-zinc-500 hover:text-zinc-900 underline transition">
+              full gallery →
+            </a>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
             {conclusions.map((p) => (
               <ClusterCard key={p.id} preset={p} twinNames={twinNames} />
             ))}
-          </div>
-          <div className="mt-6 text-sm">
-            <a href="/presets" className="underline text-zinc-700 hover:text-zinc-900">
-              View full preset gallery →
-            </a>
           </div>
         </div>
       )}
@@ -567,14 +611,11 @@ function ClusterCard({
       ${preset.generated_css}
     </style>
   </head>
-  <body>
-    ${preset.generated_html}
-  </body>
+  <body>${preset.generated_html}</body>
 </html>`,
     [preset]
   );
 
-  // Derive the variant line from change_summary (we append "Layout variant: ..." on the backend).
   const variantLine = preset.change_summary
     .split("\n")
     .find((line) => line.startsWith("Layout variant:"));
@@ -585,50 +626,45 @@ function ClusterCard({
     .trim();
 
   const voterNames = preset.voter_twin_ids
-    .map((id) => twinNames[id] || id.slice(0, 6))
+    .map((id) => twinNames[id] || `Agent ?`)
     .slice(0, 8);
 
   return (
     <div className="rounded-xl border border-zinc-200 bg-white overflow-hidden flex flex-col">
       <div className="p-4 border-b border-zinc-100">
-        <div className="text-sm font-medium">{preset.display_name}</div>
+        <div className="text-sm font-semibold">{preset.display_name}</div>
         <div className="text-xs text-zinc-500 mt-0.5">{preset.description}</div>
         {variantLine && (
-          <div className="text-[11px] font-mono text-zinc-400 mt-2">{variantLine}</div>
+          <div className="text-[11px] font-mono text-zinc-400 mt-1.5">{variantLine}</div>
         )}
       </div>
-      <div className="flex-1 bg-zinc-50">
+      <div className="bg-zinc-50">
         <iframe
           srcDoc={doc}
           sandbox="allow-same-origin"
           title={preset.display_name}
           className="w-full"
-          style={{ height: 280, border: 0, display: "block" }}
+          style={{ height: 260, border: 0, display: "block" }}
         />
       </div>
       <div className="p-3 border-t border-zinc-100">
         <div className="text-[10px] uppercase tracking-wider text-zinc-400 mb-1.5">
-          {preset.voter_twin_ids.length} voter{preset.voter_twin_ids.length === 1 ? "" : "s"}
+          {preset.voter_twin_ids.length} agent{preset.voter_twin_ids.length === 1 ? "" : "s"} voted
         </div>
-        <div className="flex flex-wrap gap-1.5">
+        <div className="flex flex-wrap gap-1">
           {voterNames.map((n, i) => (
-            <span
-              key={i}
-              className="text-[11px] bg-zinc-100 text-zinc-700 px-2 py-0.5 rounded"
-            >
+            <span key={i} className="text-[11px] bg-zinc-100 text-zinc-700 px-2 py-0.5 rounded-full">
               {n}
             </span>
           ))}
           {preset.voter_twin_ids.length > 8 && (
-            <span className="text-[11px] text-zinc-500 px-2 py-0.5">
-              +{preset.voter_twin_ids.length - 8} more
+            <span className="text-[11px] text-zinc-400 px-2 py-0.5">
+              +{preset.voter_twin_ids.length - 8}
             </span>
           )}
         </div>
         {changeBody && (
-          <p className="text-xs text-zinc-600 leading-relaxed mt-3 line-clamp-3">
-            {changeBody}
-          </p>
+          <p className="text-xs text-zinc-500 leading-relaxed mt-2 line-clamp-2">{changeBody}</p>
         )}
       </div>
     </div>
