@@ -16,7 +16,7 @@ class SessionCreateResponse(BaseModel):
 
 
 # Amazon merchant ID in Knot's system
-AMAZON_MERCHANT_ID = 6
+AMAZON_MERCHANT_ID = 44
 
 
 @router.post("/sessions", response_model=SessionCreateResponse)

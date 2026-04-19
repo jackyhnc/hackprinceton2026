@@ -19,9 +19,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from config import REPO_ROOT
+from config import REPO_ROOT, settings
 from db import supa
 from k2 import chat_json
+from dedalus_swarm import gather_twin_opinions
 from preset_library import STATIC_VARIANTS, pick_variant_for_cluster
 from swarm_events import publish as publish_event
 
@@ -277,12 +278,17 @@ async def _run_full(
     })
 
     logger.info("swarm run=%s stage=opinion twins=%d", run_id, len(twins))
-    opinions = await asyncio.gather(
-        *(
-            _twin_opinion(op_sys, op_tpl, t, sem, run_id=run_id, stagger_s=i * 0.8)
-            for i, t in enumerate(twins)
+    if settings.dedalus_api_key:
+        logger.info("swarm run=%s using Dedalus agent runner for opinions", run_id)
+        opinions = await gather_twin_opinions(twins, sem, run_id=run_id)
+    else:
+        logger.info("swarm run=%s no DEDALUS_API_KEY — falling back to K2", run_id)
+        opinions = await asyncio.gather(
+            *(
+                _twin_opinion(op_sys, op_tpl, t, sem, run_id=run_id, stagger_s=i * 0.8)
+                for i, t in enumerate(twins)
+            )
         )
-    )
 
     effective_k = min(cluster_count, max(1, len(twins)))
     logger.info("swarm run=%s stage=cluster k=%d", run_id, effective_k)
