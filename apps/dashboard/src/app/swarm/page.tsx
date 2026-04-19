@@ -190,7 +190,7 @@ export default function SwarmPage() {
   const addGossipEdge = useCallback((fromId: string) => {
     const elapsedMs = Date.now() - runStartTimeRef.current;
     if (elapsedMs < 3000) return;           // quiet for the first 3 seconds
-    if (Math.random() > 0.15) return;       // ~15% chance
+    if (Math.random() > 0.55) return;       // ~55% chance after warm-up
 
     const nodes = Array.from(twinsRef.current.values());
     if (nodes.length < 2) return;
