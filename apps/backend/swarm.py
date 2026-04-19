@@ -195,9 +195,10 @@ async def _assign_variant(
             "variant_slug": variant["slug"],
             "variant_display_name": variant["display_name"],
         })
-    # Give the viz a visible beat. Stagger by cluster so the three
-    # cluster nodes don't all pop "done" on the same tick.
-    await asyncio.sleep(0.6 + 0.25 * cluster_idx)
+    # Simulate a coding agent working — random 10-20 s per preset so
+    # each cluster finishes at a different time and the canvas feels live.
+    import random
+    await asyncio.sleep(random.uniform(10, 20))
     html = _sanitize_html(variant["html"])
     css = _sanitize_css(variant["css"])
     if run_id:
