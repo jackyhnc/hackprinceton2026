@@ -17,6 +17,9 @@ class Settings(BaseSettings):
     k2_base_url: str = ""
     k2_model: str = "k2-think-v2"
 
+    openai_api_key: str = ""
+    openai_model: str = "gpt-4o-mini"
+
     supabase_url: str = ""
     supabase_secret_key: str = ""
 

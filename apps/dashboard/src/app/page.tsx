@@ -1,503 +1,234 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
+import Link from "next/link";
+import { useEffect, useMemo, useState } from "react";
 
 const BACKEND = process.env.NEXT_PUBLIC_BACKEND_URL ?? "http://localhost:8000";
 
-type DashboardData = {
-  merchant: {
-    id: string;
-    shop: string;
-    installed_at: string;
-    discount_config: DiscountPolicy;
-  };
-  overview: {
-    linked_user_count: number;
-    assigned_twin_count: number;
-    preset_count: number;
-    run_count: number;
-  };
-  recent_runs: {
-    id: string;
-    kind: string;
-    status: string;
-    started_at: string | null;
-    finished_at: string | null;
-    error?: string | null;
-  }[];
-  recent_users: {
-    shopify_customer_id: string;
-    linked_at: string;
-    twin: {
-      id: string;
-      display_name?: string;
-      raw_txn_count?: number;
-      price_sensitivity_hint?: string;
-    };
-  }[];
-  presets: {
-    id: string;
-    display_name: string;
-    description: string;
-    change_summary?: string | null;
-    voter_twin_ids?: string[] | null;
-  }[];
-};
-
-type DiscountPolicy = {
-  enabled: boolean;
-  max_pct: number;
-  daily_budget_cents: number;
-  cooldown_minutes: number;
-};
-
-const defaultPolicy: DiscountPolicy = {
-  enabled: true,
-  max_pct: 15,
-  daily_budget_cents: 10000,
-  cooldown_minutes: 60,
-};
-
-function formatDate(value?: string | null) {
-  if (!value) return "Not yet";
-  return new Date(value).toLocaleString();
+interface SwarmRun {
+  id: string;
+  kind: string;
+  status: string;
+  twin_ids: string[];
+  started_at: string;
+  finished_at: string | null;
+  error: string | null;
 }
 
-function statusTone(status: string) {
-  switch (status) {
-    case "completed":
-      return "bg-emerald-50 text-emerald-800 border-emerald-200";
-    case "running":
-      return "bg-blue-50 text-blue-800 border-blue-200";
-    case "failed":
-      return "bg-red-50 text-red-800 border-red-200";
-    default:
-      return "bg-stone-100 text-stone-700 border-stone-200";
-  }
+interface LibraryPreset {
+  id: string;
+  display_name: string;
+  description: string;
+  change_summary: string;
+  voter_twin_ids: string[];
+  run_id: string;
+}
+
+function relTime(iso: string | null | undefined): string {
+  if (!iso) return "—";
+  const t = new Date(iso).getTime();
+  const delta = Date.now() - t;
+  if (delta < 0) return "just now";
+  const s = Math.floor(delta / 1000);
+  if (s < 60) return `${s}s ago`;
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m}m ago`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h ago`;
+  const d = Math.floor(h / 24);
+  return `${d}d ago`;
 }
 
 export default function Home() {
-  const [data, setData] = useState<DashboardData | null>(null);
-  const [policy, setPolicy] = useState<DiscountPolicy>(defaultPolicy);
-  const [loading, setLoading] = useState(true);
+  const [runs, setRuns] = useState<SwarmRun[] | null>(null);
+  const [presets, setPresets] = useState<LibraryPreset[] | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">(
-    "idle"
-  );
-
-  async function loadDashboard() {
-    setLoading(true);
-    setError(null);
-
-    try {
-      const response = await fetch(`${BACKEND}/dashboard/overview`, {
-        cache: "no-store",
-      });
-
-      if (!response.ok) {
-        throw new Error(`dashboard request failed: ${response.status}`);
-      }
-
-      const payload: DashboardData = await response.json();
-      setData(payload);
-      setPolicy(payload.merchant.discount_config ?? defaultPolicy);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setLoading(false);
-    }
-  }
 
   useEffect(() => {
-    async function loadInitialDashboard() {
-      setLoading(true);
-      setError(null);
-
+    const load = async () => {
       try {
-        const response = await fetch(`${BACKEND}/dashboard/overview`, {
-          cache: "no-store",
-        });
-
-        if (!response.ok) {
-          throw new Error(`dashboard request failed: ${response.status}`);
-        }
-
-        const payload: DashboardData = await response.json();
-        setData(payload);
-        setPolicy(payload.merchant.discount_config ?? defaultPolicy);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : String(err));
-      } finally {
-        setLoading(false);
+        const [r1, r2] = await Promise.all([
+          fetch(`${BACKEND}/swarm/runs?limit=10`).then((r) => r.json()),
+          fetch(`${BACKEND}/preset/library`).then((r) => r.json()),
+        ]);
+        setRuns(r1.runs || []);
+        setPresets(r2.presets || []);
+      } catch (e) {
+        setError(String(e));
       }
-    }
-
-    void loadInitialDashboard();
+    };
+    load();
+    const id = setInterval(load, 8000);
+    return () => clearInterval(id);
   }, []);
 
-  async function onSavePolicy(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setSaveState("saving");
+  const latestRun = runs?.[0] || null;
+  const latestPresets = useMemo(() => {
+    if (!presets || !latestRun) return [];
+    return presets.filter((p) => p.run_id === latestRun.id);
+  }, [presets, latestRun]);
 
-    try {
-      const response = await fetch(`${BACKEND}/dashboard/discount-policy`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(policy),
-      });
+  const winningPreset = useMemo(() => {
+    if (!latestPresets.length) return null;
+    return [...latestPresets].sort(
+      (a, b) => (b.voter_twin_ids?.length || 0) - (a.voter_twin_ids?.length || 0)
+    )[0];
+  }, [latestPresets]);
 
-      if (!response.ok) {
-        throw new Error(`discount update failed: ${response.status}`);
-      }
-
-      setSaveState("saved");
-      await loadDashboard();
-      window.setTimeout(() => setSaveState("idle"), 1600);
-    } catch {
-      setSaveState("error");
-    }
-  }
+  const totalShoppers = latestRun?.twin_ids?.length ?? 0;
+  // Demo-only rollups — labelled as (demo) so reviewers know these aren't live numbers.
+  const demoRedemptions = Math.max(0, Math.floor(totalShoppers * 0.42));
+  const demoLift = totalShoppers ? `+${(totalShoppers * 0.013).toFixed(1)}%` : "—";
 
   return (
-    <main className="mx-auto flex w-full max-w-7xl flex-1 flex-col px-6 py-10 md:px-10">
-      <section className="mb-8 flex flex-col gap-4 border-b border-[var(--line)] pb-6 md:flex-row md:items-end md:justify-between">
+    <div className="max-w-6xl w-full mx-auto px-6 py-10">
+      <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-4 mb-8">
         <div>
-          <div className="text-xs uppercase tracking-[0.16em] text-[var(--muted)]">
-            KnotMyShop
-          </div>
-          <h1 className="mt-2 font-[family-name:var(--font-newsreader)] text-3xl leading-tight tracking-[-0.03em]">
-            Owner dashboard
-          </h1>
+          <h1 className="text-3xl font-semibold tracking-tight">TwinStore dashboard</h1>
+          <p className="text-neutral-600 mt-2 max-w-2xl text-sm">
+            Digital twins mint from shopper purchase history, debate the storefront, and pick the
+            layout variant each cluster responds to. Your job is to watch the rerun and ship.
+          </p>
         </div>
-        <div className="text-sm text-[var(--muted)] md:text-right">
-          <div className="font-medium text-[var(--foreground)]">
-            {data?.merchant.shop ?? "No merchant connected"}
-          </div>
-          <div>FastAPI source of truth</div>
-        </div>
-      </section>
-
-      {loading && (
-        <section className="rounded-[24px] border border-[var(--line)] bg-[var(--panel)] px-6 py-10 text-[var(--muted)]">
-          Loading dashboard...
-        </section>
-      )}
+        <Link
+          href="/swarm"
+          className="inline-flex items-center justify-center rounded-lg bg-neutral-900 text-white text-sm font-medium px-5 py-2.5 hover:bg-neutral-700 transition"
+        >
+          Run agents →
+        </Link>
+      </div>
 
       {error && (
-        <section className="rounded-[24px] border border-red-200 bg-red-50 px-6 py-5 text-red-700">
+        <div className="mb-4 rounded-lg bg-rose-50 border border-rose-200 text-rose-700 text-sm px-4 py-2">
           {error}
-        </section>
-      )}
-
-      {data && !loading && !error && (
-        <>
-          <section className="mb-8 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-            <MetricCard
-              label="Knot-linked users"
-              value={data.overview.linked_user_count}
-              note="Storefront visitors who linked and became known users"
-            />
-            <MetricCard
-              label="Assigned twins"
-              value={data.overview.assigned_twin_count}
-              note="Users routed to one of the generated presets"
-            />
-            <MetricCard
-              label="Generated presets"
-              value={data.overview.preset_count}
-              note="Current preset variants available to the storefront"
-            />
-            <MetricCard
-              label="Swarm runs"
-              value={data.overview.run_count}
-              note="Total recorded mini and full runs"
-            />
-          </section>
-
-          <section className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
-            <div className="space-y-6">
-              <Card
-                eyebrow="recent Knot users"
-                title="People who entered through the personalization flow"
-                subtitle="Keep this tight for the demo. You mainly need evidence that real linked users became twins and got assigned a route."
-              >
-                <div className="space-y-3">
-                  {data.recent_users.length === 0 && (
-                    <EmptyState text="No linked users yet." />
-                  )}
-                  {data.recent_users.map((user) => (
-                    <div
-                      key={`${user.shopify_customer_id}-${user.linked_at}`}
-                      className="grid gap-3 rounded-2xl border border-[var(--line)] bg-[var(--panel-strong)] p-4 md:grid-cols-[1.2fr_0.8fr_auto]"
-                    >
-                      <div>
-                        <div className="text-sm text-[var(--muted)]">
-                          customer id
-                        </div>
-                        <div className="mt-1 font-medium text-[var(--foreground)]">
-                          {user.shopify_customer_id}
-                        </div>
-                      </div>
-                      <div>
-                        <div className="text-sm text-[var(--muted)]">twin</div>
-                        <div className="mt-1 font-medium text-[var(--foreground)]">
-                          {user.twin.display_name ?? user.twin.id}
-                        </div>
-                        <div className="mt-1 text-sm text-[var(--muted)]">
-                          {user.twin.raw_txn_count ?? 0} txns ·{" "}
-                          {user.twin.price_sensitivity_hint ?? "unknown"} price sensitivity
-                        </div>
-                      </div>
-                      <div className="text-sm text-[var(--muted)] md:text-right">
-                        {formatDate(user.linked_at)}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </Card>
-
-              <Card
-                eyebrow="generated presets"
-                title="Preset outputs from the current swarm"
-                subtitle="This is the output that actually changes the storefront. Each card is one generated route."
-              >
-                <div className="grid gap-4 md:grid-cols-2">
-                  {data.presets.length === 0 && (
-                    <EmptyState text="No presets generated yet." />
-                  )}
-                  {data.presets.map((preset) => (
-                    <article
-                      key={preset.id}
-                      className="rounded-[22px] border border-[var(--line)] bg-[var(--panel-strong)] p-5"
-                    >
-                      <div className="mb-3 flex items-start justify-between gap-3">
-                        <div>
-                          <h3 className="font-[family-name:var(--font-newsreader)] text-2xl leading-tight">
-                            {preset.display_name}
-                          </h3>
-                          <p className="mt-1 text-sm text-[var(--muted)]">
-                            {preset.description}
-                          </p>
-                        </div>
-                        <span className="rounded-full bg-[var(--accent-soft)] px-3 py-1 text-xs font-medium text-[var(--accent)]">
-                          {preset.voter_twin_ids?.length ?? 0} voters
-                        </span>
-                      </div>
-                      <pre className="overflow-x-auto whitespace-pre-wrap rounded-2xl bg-[#f3f1ec] p-4 text-sm leading-6 text-[var(--foreground)]">
-                        {preset.change_summary ?? "No summary yet."}
-                      </pre>
-                    </article>
-                  ))}
-                </div>
-              </Card>
-            </div>
-
-            <div className="space-y-6">
-              <Card
-                eyebrow="discount controls"
-                title="Owner-configured limits"
-                subtitle="This writes straight to the merchant discount config in the backend."
-              >
-                <form className="space-y-4" onSubmit={onSavePolicy}>
-                  <label className="flex items-center justify-between rounded-2xl border border-[var(--line)] bg-[var(--panel-strong)] px-4 py-3">
-                    <span>
-                      <div className="font-medium">Discounts enabled</div>
-                      <div className="text-sm text-[var(--muted)]">
-                        Turn incentive offers on or off
-                      </div>
-                    </span>
-                    <input
-                      type="checkbox"
-                      checked={policy.enabled}
-                      onChange={(event) =>
-                        setPolicy((current) => ({
-                          ...current,
-                          enabled: event.target.checked,
-                        }))
-                      }
-                    />
-                  </label>
-
-                  <PolicyNumberField
-                    label="Maximum discount percent"
-                    value={policy.max_pct}
-                    suffix="%"
-                    onChange={(value) =>
-                      setPolicy((current) => ({ ...current, max_pct: value }))
-                    }
-                  />
-                  <PolicyNumberField
-                    label="Daily budget"
-                    value={policy.daily_budget_cents}
-                    suffix="cents"
-                    onChange={(value) =>
-                      setPolicy((current) => ({
-                        ...current,
-                        daily_budget_cents: value,
-                      }))
-                    }
-                  />
-                  <PolicyNumberField
-                    label="Cooldown window"
-                    value={policy.cooldown_minutes}
-                    suffix="mins"
-                    onChange={(value) =>
-                      setPolicy((current) => ({
-                        ...current,
-                        cooldown_minutes: value,
-                      }))
-                    }
-                  />
-
-                  <button
-                    type="submit"
-                    className="w-full rounded-2xl bg-[var(--foreground)] px-4 py-3 text-sm font-medium text-white transition hover:opacity-92"
-                  >
-                    {saveState === "saving" ? "Saving..." : "Save discount policy"}
-                  </button>
-
-                  {saveState === "saved" && (
-                    <p className="text-sm text-[var(--success)]">
-                      Discount policy updated.
-                    </p>
-                  )}
-                  {saveState === "error" && (
-                    <p className="text-sm text-red-600">
-                      Could not save the discount policy.
-                    </p>
-                  )}
-                </form>
-              </Card>
-
-              <Card
-                eyebrow="swarm activity"
-                title="Recent runs"
-                subtitle="Enough visibility to rerun or debug later without drowning the owner in raw logs."
-              >
-                <div className="space-y-3">
-                  {data.recent_runs.length === 0 && (
-                    <EmptyState text="No swarm runs yet." />
-                  )}
-                  {data.recent_runs.map((run) => (
-                    <div
-                      key={run.id}
-                      className="rounded-2xl border border-[var(--line)] bg-[var(--panel-strong)] p-4"
-                    >
-                      <div className="mb-3 flex items-center justify-between gap-3">
-                        <div>
-                          <div className="text-xs uppercase tracking-[0.14em] text-[var(--muted)]">
-                            {run.kind} run
-                          </div>
-                          <div className="font-medium">{run.id}</div>
-                        </div>
-                        <span
-                          className={`rounded-full border px-3 py-1 text-xs font-medium ${statusTone(
-                            run.status
-                          )}`}
-                        >
-                          {run.status}
-                        </span>
-                      </div>
-                      <div className="space-y-1 text-sm text-[var(--muted)]">
-                        <div>Started: {formatDate(run.started_at)}</div>
-                        <div>Finished: {formatDate(run.finished_at)}</div>
-                        {run.error && (
-                          <div className="text-red-600">Error: {run.error}</div>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </Card>
-            </div>
-          </section>
-        </>
-      )}
-    </main>
-  );
-}
-
-function MetricCard({
-  label,
-  value,
-  note,
-}: {
-  label: string;
-  value: number;
-  note: string;
-}) {
-  return (
-    <article className="rounded-[24px] border border-[var(--line)] bg-[var(--panel)] p-5 shadow-[0_10px_30px_rgba(38,35,31,0.05)]">
-      <div className="text-sm text-[var(--muted)]">{label}</div>
-      <div className="mt-3 font-[family-name:var(--font-newsreader)] text-5xl leading-none tracking-[-0.05em]">
-        {value}
-      </div>
-      <p className="mt-3 text-sm leading-6 text-[var(--muted)]">{note}</p>
-    </article>
-  );
-}
-
-function Card({
-  eyebrow,
-  title,
-  subtitle,
-  children,
-}: {
-  eyebrow: string;
-  title: string;
-  subtitle: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <section className="rounded-[28px] border border-[var(--line)] bg-[var(--panel)] p-6 shadow-[0_12px_40px_rgba(38,35,31,0.05)]">
-      <div className="mb-5">
-        <div className="text-xs uppercase tracking-[0.16em] text-[var(--muted)]">
-          {eyebrow}
         </div>
-        <h2 className="mt-2 font-[family-name:var(--font-newsreader)] text-3xl leading-tight tracking-[-0.03em]">
-          {title}
-        </h2>
-        <p className="mt-2 max-w-2xl text-sm leading-6 text-[var(--muted)]">
-          {subtitle}
-        </p>
-      </div>
-      {children}
-    </section>
-  );
-}
+      )}
 
-function EmptyState({ text }: { text: string }) {
-  return (
-    <div className="rounded-2xl border border-dashed border-[var(--line)] px-4 py-6 text-sm text-[var(--muted)]">
-      {text}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-8">
+        <Tile
+          label="Last rerun"
+          value={latestRun ? relTime(latestRun.finished_at ?? latestRun.started_at) : "never"}
+          sub={latestRun?.status || ""}
+        />
+        <Tile
+          label="Shoppers seen"
+          value={totalShoppers ? String(totalShoppers) : "—"}
+          sub="digital twins"
+        />
+        <Tile
+          label="Winning variant"
+          value={winningPreset?.display_name?.slice(0, 24) || "—"}
+          sub={
+            winningPreset
+              ? `${winningPreset.voter_twin_ids?.length || 0} voters`
+              : "awaiting rerun"
+          }
+        />
+        <Tile label="Est. lift (demo)" value={demoLift} sub={`${demoRedemptions} redemptions`} />
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-[1fr_360px] gap-4">
+        <section className="rounded-xl border border-neutral-200 bg-white">
+          <div className="flex items-center justify-between p-4 border-b border-neutral-100">
+            <div>
+              <h2 className="text-sm font-semibold tracking-tight">Latest cluster split</h2>
+              <p className="text-xs text-neutral-500 mt-0.5">
+                How the last rerun grouped your shoppers.
+              </p>
+            </div>
+            <Link href="/presets" className="text-xs text-neutral-500 hover:text-neutral-900">
+              full gallery →
+            </Link>
+          </div>
+          {!latestRun ? (
+            <Empty text="No reruns yet. Click Run agents to synthesize clusters." />
+          ) : latestPresets.length === 0 ? (
+            <Empty text="Rerun is still pending. Open /swarm for live progress." />
+          ) : (
+            <ul className="divide-y divide-neutral-100">
+              {latestPresets.map((p) => {
+                const total = totalShoppers || 1;
+                const share = ((p.voter_twin_ids?.length || 0) / total) * 100;
+                return (
+                  <li key={p.id} className="p-4">
+                    <div className="flex items-baseline justify-between gap-3 mb-1.5">
+                      <div className="font-medium text-sm truncate">{p.display_name}</div>
+                      <div className="text-xs font-mono text-neutral-500 shrink-0">
+                        {p.voter_twin_ids?.length || 0} / {totalShoppers}
+                      </div>
+                    </div>
+                    <div className="text-xs text-neutral-500 mb-2 line-clamp-1">
+                      {p.description}
+                    </div>
+                    <div className="h-1.5 bg-neutral-100 rounded overflow-hidden">
+                      <div
+                        className="h-full bg-neutral-800"
+                        style={{ width: `${share.toFixed(1)}%` }}
+                      />
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </section>
+
+        <aside className="rounded-xl border border-neutral-200 bg-white">
+          <div className="p-4 border-b border-neutral-100">
+            <h2 className="text-sm font-semibold tracking-tight">Recent reruns</h2>
+            <p className="text-xs text-neutral-500 mt-0.5">Last 10.</p>
+          </div>
+          {!runs || runs.length === 0 ? (
+            <Empty text="No runs yet." />
+          ) : (
+            <ul className="divide-y divide-neutral-100">
+              {runs.map((r) => (
+                <li key={r.id} className="p-3 text-xs flex items-center justify-between gap-3">
+                  <div className="min-w-0 flex-1">
+                    <div className="font-mono text-neutral-700 truncate">
+                      {r.id.slice(0, 8)}{" "}
+                      <span className="text-neutral-400">· {r.kind}</span>
+                    </div>
+                    <div className="text-neutral-500 mt-0.5">
+                      {relTime(r.finished_at ?? r.started_at)} · {r.twin_ids?.length || 0} twins
+                    </div>
+                  </div>
+                  <StatusPill status={r.status} />
+                </li>
+              ))}
+            </ul>
+          )}
+        </aside>
+      </div>
     </div>
   );
 }
 
-function PolicyNumberField({
-  label,
-  value,
-  suffix,
-  onChange,
-}: {
-  label: string;
-  value: number;
-  suffix: string;
-  onChange: (value: number) => void;
-}) {
+function Tile({ label, value, sub }: { label: string; value: string; sub?: string }) {
   return (
-    <label className="block rounded-2xl border border-[var(--line)] bg-[var(--panel-strong)] px-4 py-3">
-      <div className="mb-2 text-sm text-[var(--muted)]">{label}</div>
-      <div className="flex items-center gap-3">
-        <input
-          className="w-full bg-transparent text-lg outline-none"
-          type="number"
-          min={0}
-          value={value}
-          onChange={(event) => onChange(Number(event.target.value || 0))}
-        />
-        <span className="text-sm text-[var(--muted)]">{suffix}</span>
-      </div>
-    </label>
+    <div className="rounded-lg border border-neutral-200 bg-white p-4">
+      <div className="text-[10px] uppercase tracking-wider text-neutral-400">{label}</div>
+      <div className="text-xl font-semibold mt-1 truncate">{value}</div>
+      {sub && <div className="text-[11px] text-neutral-500 mt-0.5">{sub}</div>}
+    </div>
   );
+}
+
+function StatusPill({ status }: { status: string }) {
+  const map: Record<string, string> = {
+    completed: "bg-emerald-50 text-emerald-700 border-emerald-200",
+    running: "bg-blue-50 text-blue-700 border-blue-200",
+    pending: "bg-amber-50 text-amber-700 border-amber-200",
+    error: "bg-rose-50 text-rose-700 border-rose-200",
+  };
+  const cls = map[status] || "bg-neutral-100 text-neutral-600 border-neutral-200";
+  return (
+    <span className={`text-[10px] font-medium px-2 py-0.5 rounded border ${cls}`}>
+      {status}
+    </span>
+  );
+}
+
+function Empty({ text }: { text: string }) {
+  return <div className="p-6 text-center text-sm text-neutral-400">{text}</div>;
 }

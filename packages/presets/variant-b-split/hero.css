@@ -1,0 +1,101 @@
+.twinstore-hero--evermade-split {
+  --bg: #f6efe6;
+  --ink: #2a2620;
+  --muted: #766e63;
+  --accent: #d96e4a;
+  --panel: #ece2d3;
+  box-sizing: border-box;
+  width: 100%;
+  min-height: clamp(440px, 62vh, 700px);
+  background: var(--bg);
+  color: var(--ink);
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: clamp(24px, 4vw, 40px);
+  align-items: center;
+  padding: clamp(40px, 6vw, 80px) clamp(20px, 4vw, 56px);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+.twinstore-hero--evermade-split *,
+.twinstore-hero--evermade-split *::before,
+.twinstore-hero--evermade-split *::after {
+  box-sizing: border-box;
+}
+@media (min-width: 768px) {
+  .twinstore-hero--evermade-split {
+    grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+  }
+}
+.twinstore-hero--evermade-split__text {
+  max-width: 560px;
+}
+.twinstore-hero--evermade-split__eyebrow {
+  margin: 0 0 14px 0;
+  font-size: 0.72rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.twinstore-hero--evermade-split__headline {
+  font-size: clamp(2.1rem, 4vw + 1rem, 3.4rem);
+  line-height: 1.08;
+  font-weight: 500;
+  letter-spacing: -0.02em;
+  margin: 0 0 16px 0;
+}
+.twinstore-hero--evermade-split__subhead {
+  font-size: clamp(1rem, 0.6vw + 0.82rem, 1.12rem);
+  line-height: 1.55;
+  color: var(--muted);
+  margin: 0 0 28px 0;
+  max-width: 48ch;
+}
+.twinstore-hero--evermade-split__cta {
+  display: inline-block;
+  background: var(--ink);
+  color: var(--bg);
+  padding: 14px 32px;
+  border-radius: 2px;
+  text-decoration: none;
+  font-size: 0.95rem;
+  letter-spacing: 0.04em;
+  transition: background 120ms ease;
+}
+.twinstore-hero--evermade-split__cta:hover {
+  background: var(--accent);
+}
+.twinstore-hero--evermade-split__panel {
+  background: linear-gradient(135deg, var(--panel) 0%, #d9c9ae 100%);
+  border-radius: 6px;
+  padding: clamp(28px, 4vw, 40px);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-height: 220px;
+  justify-content: center;
+}
+.twinstore-hero--evermade-split__badge {
+  align-self: flex-start;
+  background: var(--ink);
+  color: var(--bg);
+  font-size: 0.7rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  padding: 6px 12px;
+  border-radius: 999px;
+}
+.twinstore-hero--evermade-split__offer {
+  margin: 8px 0 0 0;
+  font-size: clamp(2.4rem, 5vw + 1rem, 4rem);
+  line-height: 1;
+  font-weight: 600;
+  letter-spacing: -0.03em;
+  color: var(--ink);
+}
+.twinstore-hero--evermade-split__fineprint {
+  margin: 4px 0 0 0;
+  font-size: 0.82rem;
+  color: var(--muted);
+  line-height: 1.5;
+  max-width: 32ch;
+}

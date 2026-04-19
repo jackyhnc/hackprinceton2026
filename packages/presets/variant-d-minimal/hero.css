@@ -1,0 +1,51 @@
+.twinstore-hero--evermade-minimal {
+  --bg: #f6efe6;
+  --ink: #2a2620;
+  --muted: #766e63;
+  --accent: #d96e4a;
+  box-sizing: border-box;
+  width: 100%;
+  min-height: clamp(460px, 65vh, 720px);
+  background: var(--bg);
+  color: var(--ink);
+  display: flex;
+  align-items: center;
+  padding: clamp(60px, 8vw, 120px) clamp(24px, 6vw, 96px);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+.twinstore-hero--evermade-minimal *,
+.twinstore-hero--evermade-minimal *::before,
+.twinstore-hero--evermade-minimal *::after {
+  box-sizing: border-box;
+}
+.twinstore-hero--evermade-minimal__inner {
+  max-width: 720px;
+}
+.twinstore-hero--evermade-minimal__eyebrow {
+  margin: 0 0 24px 0;
+  font-size: 0.72rem;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.twinstore-hero--evermade-minimal__headline {
+  font-size: clamp(3rem, 7vw + 1rem, 6rem);
+  line-height: 0.98;
+  font-weight: 500;
+  letter-spacing: -0.04em;
+  margin: 0 0 48px 0;
+}
+.twinstore-hero--evermade-minimal__cta {
+  display: inline-block;
+  color: var(--ink);
+  border-bottom: 1px solid var(--ink);
+  padding-bottom: 4px;
+  text-decoration: none;
+  font-size: 1rem;
+  letter-spacing: 0.02em;
+  transition: color 120ms ease, border-color 120ms ease;
+}
+.twinstore-hero--evermade-minimal__cta:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+}

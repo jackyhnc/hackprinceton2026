@@ -1,0 +1,66 @@
+.twinstore-hero--evermade-urgency {
+  --bg: #f6efe6;
+  --ink: #2a2620;
+  --muted: #766e63;
+  --accent: #d96e4a;
+  box-sizing: border-box;
+  width: 100%;
+  min-height: clamp(440px, 62vh, 680px);
+  background:
+    radial-gradient(circle at 50% 10%, rgba(217, 110, 74, 0.16) 0%, transparent 55%),
+    var(--bg);
+  color: var(--ink);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: clamp(40px, 6vw, 80px) clamp(20px, 4vw, 48px);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+.twinstore-hero--evermade-urgency *,
+.twinstore-hero--evermade-urgency *::before,
+.twinstore-hero--evermade-urgency *::after {
+  box-sizing: border-box;
+}
+.twinstore-hero--evermade-urgency__inner {
+  text-align: center;
+  max-width: 640px;
+}
+.twinstore-hero--evermade-urgency__badge {
+  display: inline-block;
+  background: var(--accent);
+  color: #fff;
+  font-size: 0.72rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  padding: 8px 16px;
+  border-radius: 999px;
+  margin: 0 0 24px 0;
+}
+.twinstore-hero--evermade-urgency__headline {
+  font-size: clamp(2.2rem, 5vw + 1rem, 3.8rem);
+  line-height: 1.05;
+  font-weight: 500;
+  letter-spacing: -0.025em;
+  margin: 0 0 16px 0;
+}
+.twinstore-hero--evermade-urgency__subhead {
+  font-size: clamp(1rem, 0.6vw + 0.82rem, 1.15rem);
+  line-height: 1.55;
+  color: var(--muted);
+  margin: 0 0 32px 0;
+}
+.twinstore-hero--evermade-urgency__cta {
+  display: inline-block;
+  background: var(--accent);
+  color: #fff;
+  padding: 14px 38px;
+  border-radius: 2px;
+  text-decoration: none;
+  font-size: 0.95rem;
+  letter-spacing: 0.04em;
+  transition: background 120ms ease, transform 120ms ease;
+}
+.twinstore-hero--evermade-urgency__cta:hover {
+  background: #c35a36;
+  transform: translateY(-1px);
+}

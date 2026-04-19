@@ -1,9 +1,11 @@
-"""Swarm core — opinion → cluster → code pipeline via K2 Think V2.
+"""Swarm core — opinion → cluster → variant-pick pipeline.
 
 Full run (merchant Run button):
   1. Per-twin fan-out: each twin emits 5-8 UI change opinions (twin_opinion.md).
   2. Single cluster call: group opinions into N coherent presets (preset_cluster.md).
-  3. Per-preset fan-out: K2 coding agent generates self-contained HTML+CSS (preset_coder.md).
+  3. Per-cluster assignment: each cluster is matched to one of our hand-crafted
+     static variants under packages/presets/ by index. No LLM codegen — generated
+     HTML/CSS is too rough for a production-looking demo, so we curate.
   4. Persist: wipe prior preset_library rows (cascade clears assignments/reactions),
      insert fresh preset rows, upsert twin_preset_assignments by voter_twin_ids.
 
@@ -20,6 +22,8 @@ from typing import Any
 from config import REPO_ROOT
 from db import supa
 from k2 import chat_json
+from preset_library import STATIC_VARIANTS, pick_variant_for_cluster
+from swarm_events import publish as publish_event
 
 logger = logging.getLogger("twinstore.swarm")
 
@@ -45,8 +49,15 @@ async def _twin_opinion(
     user_template: str,
     twin: dict[str, Any],
     sem: asyncio.Semaphore,
+    run_id: str | None = None,
 ) -> dict[str, Any]:
     async with sem:
+        if run_id:
+            publish_event(run_id, {
+                "stage": "opinion_start",
+                "twin_id": twin["id"],
+                "display_name": twin.get("display_name", ""),
+            })
         user = user_template.replace("{persona_doc}", twin["persona_doc"])
         try:
             result = await chat_json(system, user, max_tokens=2000)
@@ -56,6 +67,14 @@ async def _twin_opinion(
             logger.exception("twin_opinion failed for twin=%s", twin["id"])
             opinions = []
             summary = f"opinion failed: {e}"
+        if run_id:
+            publish_event(run_id, {
+                "stage": "opinion_done",
+                "twin_id": twin["id"],
+                "display_name": twin.get("display_name", ""),
+                "summary": summary,
+                "opinion_count": len(opinions),
+            })
         return {
             "twin_id": twin["id"],
             "display_name": twin.get("display_name", ""),
@@ -97,27 +116,84 @@ async def _cluster_presets(
     return presets
 
 
-async def _code_preset(
-    system: str,
-    user_template: str,
-    preset: dict[str, Any],
-    sem: asyncio.Semaphore,
-) -> dict[str, str]:
-    async with sem:
-        user = (
-            user_template.replace("{preset_name}", preset.get("name", ""))
-            .replace("{preset_tagline}", preset.get("tagline", ""))
-            .replace("{change_summary}", preset.get("change_summary", ""))
+_FORBIDDEN_TAG_RE = re.compile(
+    r"</?(?:script|style|html|head|body|link|meta|iframe)\b[^>]*>",
+    re.IGNORECASE,
+)
+_EVENT_ATTR_RE = re.compile(r"\son[a-z]+\s*=\s*(?:\"[^\"]*\"|'[^']*'|[^\s>]+)", re.IGNORECASE)
+# Match truly-global selectors — ones appearing at the START of a selector
+# (after `}`, comma, or beginning of file), not as descendants like
+# `.twinstore-hero *`. We care about rules like `html {...}` or `body, * {...}`,
+# NOT scoped rules like `.twinstore-hero--foo *` (the legit reset pattern).
+_GLOBAL_CSS_RE = re.compile(
+    r"(?:^|[\}\,])\s*(?:html|body|:root|\*)(?=\s*[\{,])",
+    re.IGNORECASE,
+)
+
+
+def _sanitize_html(html: str) -> str:
+    """Strip anything that could break the host page — scripts, styles,
+    document-level tags, inline event handlers."""
+    if not html:
+        return ""
+    cleaned = _FORBIDDEN_TAG_RE.sub("", html)
+    cleaned = _EVENT_ATTR_RE.sub("", cleaned)
+    return cleaned.strip()
+
+
+def _sanitize_css(css: str) -> str:
+    """Reject CSS that targets global selectors (html/body/:root/bare *).
+    Returns the CSS unchanged if safe, or a commented-out version if not."""
+    if not css:
+        return ""
+    if _GLOBAL_CSS_RE.search(css):
+        logger.warning("preset_coder emitted global CSS selectors — quarantining")
+        return "/* quarantined: model emitted html/body/:root/* selectors */\n" + "\n".join(
+            "/* " + line + " */" for line in css.splitlines()
         )
-        try:
-            result = await chat_json(system, user, max_tokens=4000)
-            html = str(result.get("html", "")).strip()
-            css = str(result.get("css", "")).strip()
-        except Exception as e:
-            logger.exception("preset_coder failed for preset=%s", preset.get("name"))
-            html = ""
-            css = f"/* code generation failed: {e} */"
-        return {"html": html, "css": css}
+    return css.strip()
+
+
+async def _assign_variant(
+    cluster_idx: int,
+    preset: dict[str, Any],
+    run_id: str | None = None,
+) -> dict[str, Any]:
+    """Map one cluster to a static hand-crafted variant.
+
+    Fires the same code_start/code_done stream events the UI already animates
+    against. We add a small artificial delay so the 'coding' animation on the
+    swarm viz still has a beat to play out — otherwise the whole stage flashes
+    past in a single frame and the demo story breaks.
+    """
+    name = preset.get("name", "")
+    variant = pick_variant_for_cluster(cluster_idx)
+    if run_id:
+        publish_event(run_id, {
+            "stage": "code_start",
+            "preset_name": name,
+            "tagline": preset.get("tagline", ""),
+            "cluster_idx": cluster_idx,
+            "variant_slug": variant["slug"],
+            "variant_display_name": variant["display_name"],
+        })
+    # Give the viz a visible beat. Stagger by cluster so the three
+    # cluster nodes don't all pop "done" on the same tick.
+    await asyncio.sleep(0.6 + 0.25 * cluster_idx)
+    html = _sanitize_html(variant["html"])
+    css = _sanitize_css(variant["css"])
+    if run_id:
+        publish_event(run_id, {
+            "stage": "code_done",
+            "preset_name": name,
+            "html_bytes": len(html),
+            "css_bytes": len(css),
+            "cluster_idx": cluster_idx,
+            "variant_slug": variant["slug"],
+            "variant_display_name": variant["display_name"],
+            "variant_description": variant["description"],
+        })
+    return {"html": html, "css": css, "variant": variant}
 
 
 async def _score_single(
@@ -159,27 +235,52 @@ async def _run_full(
     merchant_id: str,
     cluster_count: int,
 ) -> int:
+    if not STATIC_VARIANTS:
+        raise RuntimeError(
+            "no static preset variants available — check packages/presets/"
+        )
+
     db = supa()
     op_sys, op_tpl = _load_prompt("twin_opinion.md")
     cl_sys, cl_tpl = _load_prompt("preset_cluster.md")
-    co_sys, co_tpl = _load_prompt("preset_coder.md")
+    # preset_coder.md is no longer used; cluster-to-variant mapping is static.
 
     sem = asyncio.Semaphore(K2_CONCURRENCY)
 
+    publish_event(run_id, {
+        "stage": "run_start",
+        "twin_count": len(twins),
+        "twins": [{"id": t["id"], "display_name": t.get("display_name", "")} for t in twins],
+    })
+
     logger.info("swarm run=%s stage=opinion twins=%d", run_id, len(twins))
     opinions = await asyncio.gather(
-        *(_twin_opinion(op_sys, op_tpl, t, sem) for t in twins)
+        *(_twin_opinion(op_sys, op_tpl, t, sem, run_id=run_id) for t in twins)
     )
 
     effective_k = min(cluster_count, max(1, len(twins)))
     logger.info("swarm run=%s stage=cluster k=%d", run_id, effective_k)
+    publish_event(run_id, {"stage": "cluster_start", "target_count": effective_k})
     presets = await _cluster_presets(cl_sys, cl_tpl, opinions, effective_k)
     if not presets:
         raise RuntimeError("clustering returned zero presets")
 
-    logger.info("swarm run=%s stage=code presets=%d", run_id, len(presets))
+    publish_event(run_id, {
+        "stage": "cluster_done",
+        "presets": [
+            {
+                "name": p.get("name", ""),
+                "tagline": p.get("tagline", ""),
+                "voter_twin_ids": p.get("voter_twin_ids") or [],
+            }
+            for p in presets
+        ],
+    })
+
+    logger.info("swarm run=%s stage=assign presets=%d variants=%d",
+                run_id, len(presets), len(STATIC_VARIANTS))
     codes = await asyncio.gather(
-        *(_code_preset(co_sys, co_tpl, p, sem) for p in presets)
+        *(_assign_variant(idx, p, run_id=run_id) for idx, p in enumerate(presets))
     )
 
     run_prefix = run_id.split("-", 1)[0]
@@ -190,7 +291,12 @@ async def _run_full(
     for preset, code in zip(presets, codes):
         name = preset.get("name") or "Preset"
         tagline = preset.get("tagline") or ""
-        change_summary = preset.get("change_summary") or ""
+        base_summary = preset.get("change_summary") or ""
+        variant = code["variant"]
+        change_summary = (
+            f"{base_summary}\n\n"
+            f"Layout variant: {variant['display_name']} — {variant['description']}"
+        ).strip()
         voter_ids = [v for v in (preset.get("voter_twin_ids") or []) if v in valid_twin_ids]
 
         preset_id = f"{run_prefix}-{_slug(name)}"
@@ -361,6 +467,7 @@ async def run_swarm(
             }
         ).eq("id", run_id).execute()
 
+        publish_event(run_id, {"stage": "done", "status": "completed", "assignments": assignments})
         logger.info("swarm run=%s %s completed: %d assignments", run_id, kind, assignments)
 
     except Exception as e:
@@ -372,3 +479,4 @@ async def run_swarm(
                 "finished_at": datetime.now(timezone.utc).isoformat(),
             }
         ).eq("id", run_id).execute()
+        publish_event(run_id, {"stage": "done", "status": "error", "error": str(e)})

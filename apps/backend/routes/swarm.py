@@ -5,14 +5,18 @@ GET /swarm/runs/:id for status. Two modes:
 - mini: one twin × all presets (auto-triggered after minting)
 - full: all twins × all presets (merchant Run button)
 """
+import asyncio
+import json
 import logging
 import uuid
 
-from fastapi import APIRouter, BackgroundTasks, HTTPException
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Request
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from db import supa
 from swarm import run_swarm
+from swarm_events import subscribe, unsubscribe
 
 logger = logging.getLogger("twinstore.routes.swarm")
 router = APIRouter(prefix="/swarm")
@@ -118,3 +122,43 @@ async def get_run(run_id: str) -> dict:
     )
 
     return {"run": run, "reactions": reactions, "assignments": assignments}
+
+
+@router.get("/runs/{run_id}/stream")
+async def stream_run(run_id: str, request: Request) -> StreamingResponse:
+    """Server-Sent Events stream of pipeline stage events for a run.
+
+    Emits history immediately on connect, then streams live events until
+    the run completes or the client disconnects. Event format is plain
+    JSON per `data:` line.
+    """
+    async def event_generator():
+        queue = subscribe(run_id)
+        try:
+            # Tell the browser to keep the connection open (Chrome will
+            # otherwise idle it out without an initial comment line).
+            yield ": stream open\n\n"
+            while True:
+                if await request.is_disconnected():
+                    break
+                try:
+                    event = await asyncio.wait_for(queue.get(), timeout=15.0)
+                except asyncio.TimeoutError:
+                    # keepalive — browsers close idle SSE after ~30s
+                    yield ": keepalive\n\n"
+                    continue
+                yield f"data: {json.dumps(event)}\n\n"
+                if event.get("stage") == "done":
+                    break
+        finally:
+            unsubscribe(run_id, queue)
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache, no-transform",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",  # disable nginx/cloudflare buffering
+        },
+    )

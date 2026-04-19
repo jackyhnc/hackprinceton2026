@@ -1,0 +1,78 @@
+.twinstore-hero--evermade-story {
+  --bg: #f6efe6;
+  --ink: #2a2620;
+  --muted: #766e63;
+  --accent: #d96e4a;
+  box-sizing: border-box;
+  width: 100%;
+  min-height: clamp(460px, 66vh, 720px);
+  background:
+    linear-gradient(180deg, #fbf5ed 0%, var(--bg) 100%);
+  color: var(--ink);
+  display: flex;
+  align-items: center;
+  padding: clamp(48px, 7vw, 96px) clamp(20px, 4vw, 56px);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+.twinstore-hero--evermade-story *,
+.twinstore-hero--evermade-story *::before,
+.twinstore-hero--evermade-story *::after {
+  box-sizing: border-box;
+}
+.twinstore-hero--evermade-story__inner {
+  max-width: 760px;
+}
+.twinstore-hero--evermade-story__eyebrow {
+  margin: 0 0 20px 0;
+  font-size: 0.72rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+.twinstore-hero--evermade-story__headline {
+  font-size: clamp(1.9rem, 3vw + 1rem, 2.8rem);
+  line-height: 1.15;
+  font-weight: 500;
+  letter-spacing: -0.015em;
+  margin: 0 0 22px 0;
+}
+.twinstore-hero--evermade-story__subhead {
+  font-size: clamp(1rem, 0.55vw + 0.88rem, 1.12rem);
+  line-height: 1.65;
+  color: var(--muted);
+  margin: 0 0 36px 0;
+  max-width: 58ch;
+}
+.twinstore-hero--evermade-story__actions {
+  display: flex;
+  align-items: center;
+  gap: clamp(16px, 3vw, 28px);
+  flex-wrap: wrap;
+}
+.twinstore-hero--evermade-story__cta {
+  display: inline-block;
+  background: var(--ink);
+  color: var(--bg);
+  padding: 14px 32px;
+  border-radius: 2px;
+  text-decoration: none;
+  font-size: 0.95rem;
+  letter-spacing: 0.04em;
+  transition: background 120ms ease;
+}
+.twinstore-hero--evermade-story__cta:hover {
+  background: var(--accent);
+}
+.twinstore-hero--evermade-story__secondary {
+  color: var(--ink);
+  text-decoration: none;
+  font-size: 0.92rem;
+  letter-spacing: 0.02em;
+  border-bottom: 1px solid transparent;
+  padding-bottom: 2px;
+  transition: border-color 120ms ease, color 120ms ease;
+}
+.twinstore-hero--evermade-story__secondary:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+}

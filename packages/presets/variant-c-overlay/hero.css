@@ -1,0 +1,75 @@
+.twinstore-hero--evermade-overlay {
+  --bg: #f6efe6;
+  --ink: #2a2620;
+  --muted: #766e63;
+  --accent: #d96e4a;
+  position: relative;
+  box-sizing: border-box;
+  width: 100%;
+  min-height: clamp(440px, 62vh, 680px);
+  background: var(--bg);
+  color: var(--ink);
+  display: flex;
+  align-items: center;
+  padding: clamp(40px, 6vw, 80px) clamp(20px, 4vw, 56px);
+  overflow: hidden;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+.twinstore-hero--evermade-overlay *,
+.twinstore-hero--evermade-overlay *::before,
+.twinstore-hero--evermade-overlay *::after {
+  box-sizing: border-box;
+}
+.twinstore-hero--evermade-overlay__orbs {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(circle at 88% 24%, rgba(217, 110, 74, 0.22) 0%, transparent 45%),
+    radial-gradient(circle at 12% 84%, rgba(124, 158, 134, 0.24) 0%, transparent 45%),
+    radial-gradient(circle at 60% 60%, rgba(255, 255, 255, 0.5) 0%, transparent 60%);
+}
+.twinstore-hero--evermade-overlay__inner {
+  position: relative;
+  max-width: 620px;
+  z-index: 1;
+}
+.twinstore-hero--evermade-overlay__headline {
+  font-size: clamp(2.1rem, 4vw + 1rem, 3.5rem);
+  line-height: 1.08;
+  font-weight: 500;
+  letter-spacing: -0.025em;
+  margin: 0 0 16px 0;
+}
+.twinstore-hero--evermade-overlay__subhead {
+  font-size: clamp(1rem, 0.6vw + 0.85rem, 1.15rem);
+  line-height: 1.55;
+  color: var(--muted);
+  margin: 0 0 30px 0;
+  max-width: 44ch;
+}
+.twinstore-hero--evermade-overlay__cta {
+  display: inline-block;
+  background: var(--ink);
+  color: var(--bg);
+  padding: 14px 34px;
+  border-radius: 2px;
+  text-decoration: none;
+  font-size: 0.95rem;
+  letter-spacing: 0.04em;
+  transition: background 120ms ease;
+}
+.twinstore-hero--evermade-overlay__cta:hover {
+  background: var(--accent);
+}
+.twinstore-hero--evermade-overlay__trust {
+  margin: 18px 0 0 0;
+  font-size: 0.85rem;
+  color: var(--muted);
+  letter-spacing: 0.02em;
+}
+.twinstore-hero--evermade-overlay__stars {
+  color: var(--accent);
+  letter-spacing: 0.12em;
+  margin-right: 6px;
+}
