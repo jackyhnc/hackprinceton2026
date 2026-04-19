@@ -434,14 +434,21 @@ export default function SwarmPage() {
           break;
 
         case "code_start":
-          appendLog(`🎨 "${event.preset_name}" → ${event.variant_display_name || "variant"}`);
+          appendLog(
+            `🔧 Coding agent generating layout for "${event.preset_name}"` +
+            (event.variant_display_name ? ` (${event.variant_display_name} variant)` : "") +
+            `…`
+          );
           clustersRef.current.forEach((c) => {
             if (c.name === event.preset_name) c.state = "coding";
           });
           break;
 
         case "code_done":
-          appendLog(`✨ "${event.preset_name}" ← ${event.variant_display_name || "variant"}`);
+          appendLog(
+            `✅ Layout ready — "${event.preset_name}"` +
+            (event.variant_display_name ? ` · ${event.variant_display_name}` : "")
+          );
           clustersRef.current.forEach((c) => {
             if (c.name === event.preset_name) c.state = "done";
           });
