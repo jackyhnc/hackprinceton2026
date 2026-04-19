@@ -69,6 +69,12 @@
     wrapper.id = PRESET_HERO_ID;
     wrapper.innerHTML = html;
     main.insertBefore(wrapper, main.firstChild);
+    // Hide the native hero section directly via JS — more reliable than CSS selectors
+    var nativeHero = main.querySelector(".shopify-section, section, [class*='hero'], [class*='banner'], [id*='hero'], [id*='banner']");
+    if (nativeHero && nativeHero.id !== PRESET_HERO_ID && !nativeHero.closest("#" + PRESET_HERO_ID)) {
+      nativeHero.style.setProperty("display", "none", "important");
+      nativeHero.setAttribute("data-twinstore-hidden", "1");
+    }
     return true;
   }
 
@@ -241,32 +247,23 @@
     document.body.appendChild(signoutBtn);
   }
 
-  // ---------- RETURN-FROM-SIGNUP: poll backend, apply, show discount ----------
-  var urlParams = new URL(window.location.href).searchParams;
-  var signupFlag = urlParams.get(SIGNUP_QUERY_KEY);
-  var returnExternalUserId = urlParams.get(USER_QUERY_KEY);
+  // ---------- RETURN-FROM-SIGNUP: show discount toast + apply preset ----------
+  var justLinked = localStorage.getItem("amz_just_linked") === "1";
   var savedDiscountCode = localStorage.getItem("amz_discount_code");
 
-  if (signupFlag === "1") {
-    var userForFlow = returnExternalUserId || savedExternalUserId;
-    if (userForFlow) {
-      localStorage.setItem("amz_external_user_id", userForFlow);
-      Promise.all([
-        waitForWebhookDiscountCode(userForFlow),
-        verifyKnotAccount(userForFlow).catch(function() { return null; }),
-        pollAndApplyPreset(userForFlow),
-      ]).then(function(results) {
-        var issuedCode = results[0];
-        var presetData = results[2];
-        var codeToShow = issuedCode || savedDiscountCode || DEFAULT_DISCOUNT_CODE;
-        localStorage.setItem("amz_discount_code", codeToShow);
-        var presetName = presetData && presetData.preset ? presetData.preset.display_name : null;
-        showSuccessMessage(codeToShow, presetName, userForFlow);
-      });
-    } else {
-      showSuccessMessage(savedDiscountCode || DEFAULT_DISCOUNT_CODE, null, savedExternalUserId);
-    }
-    removeUrlParams([SIGNUP_QUERY_KEY, USER_QUERY_KEY, "merchant"]);
+  if (justLinked && savedExternalUserId) {
+    localStorage.removeItem("amz_just_linked");
+    Promise.all([
+      waitForWebhookDiscountCode(savedExternalUserId),
+      pollAndApplyPreset(savedExternalUserId),
+    ]).then(function(results) {
+      var issuedCode = results[0];
+      var presetData = results[1];
+      var codeToShow = issuedCode || savedDiscountCode || DEFAULT_DISCOUNT_CODE;
+      localStorage.setItem("amz_discount_code", codeToShow);
+      var presetName = presetData && presetData.preset ? presetData.preset.display_name : null;
+      showSuccessMessage(codeToShow, presetName, savedExternalUserId);
+    });
     return; // popup not needed — user just linked
   }
 
@@ -386,20 +383,78 @@
         merchantIds: sessionData.merchantIds,
         entryPoint: "storefront_amazon_popup",
         onSuccess: function(details) {
-          var redirectUrl = sessionData.returnUrl || returnUrl;
+          console.log("[TwinStore] onSuccess fired", details);
           localStorage.setItem("amz_external_user_id", sessionData.externalUserId);
-          window.location.href = withUrlParam(
-            withUrlParam(redirectUrl, USER_QUERY_KEY, sessionData.externalUserId),
-            "merchant",
-            (details && details.merchantName) || "Amazon"
-          );
+          localStorage.setItem("amz_just_linked", "1");
+          closePopup();
+          // Show success immediately — don't wait for reload
+          var codeToShow = localStorage.getItem("amz_discount_code") || DEFAULT_DISCOUNT_CODE;
+          showSuccessMessage(codeToShow, null, sessionData.externalUserId);
+          // Apply preset in background + reload once done
+          pollAndApplyPreset(sessionData.externalUserId).then(function(presetData) {
+            var presetName = presetData && presetData.preset ? presetData.preset.display_name : null;
+            if (presetName) showSuccessMessage(codeToShow, presetName, sessionData.externalUserId);
+            // Add signout button
+            var btn = document.createElement("button");
+            btn.className = "amz-signout";
+            btn.textContent = "Unlink Amazon";
+            btn.addEventListener("click", function() {
+              localStorage.removeItem("amz_external_user_id");
+              localStorage.removeItem("amz_discount_code");
+              localStorage.removeItem("amz_just_linked");
+              window.location.reload();
+            });
+            document.body.appendChild(btn);
+          });
         },
         onError: function(code, message) {
-          cta.disabled = false; cta.style.opacity = ""; cta.textContent = "Link Amazon";
+          console.log("[TwinStore] onError fired", code, message);
+          cta.disabled = false; cta.style.opacity = ""; cta.textContent = "Connect Amazon";
           showToast("Knot error (" + code + "): " + message, true);
         },
         onExit: function() {
-          cta.disabled = false; cta.style.opacity = ""; cta.textContent = "Link Amazon";
+          console.log("[TwinStore] onExit fired — triggering mint pipeline + polling for twin");
+          localStorage.setItem("amz_external_user_id", sessionData.externalUserId);
+          closePopup();
+          showToast("Connecting your Amazon account&hellip; your storefront will update in a moment.", false);
+
+          // Kick off mint pipeline directly (bypasses Knot webhook which doesn't fire in dev)
+          var linkEndpoint = buildBackendUrl("/api/knot/link-complete");
+          if (linkEndpoint) {
+            fetch(linkEndpoint, {
+              method: "POST",
+              headers: { "Content-Type": "application/json", "ngrok-skip-browser-warning": "1" },
+              body: JSON.stringify({ external_user_id: sessionData.externalUserId }),
+            }).then(function(r) {
+              console.log("[TwinStore] link-complete status:", r.status);
+            }).catch(function(e) {
+              console.warn("[TwinStore] link-complete call failed:", e);
+            });
+          }
+
+          // Poll up to 90s (30 attempts × 3s) for the twin to be minted + preset assigned
+          (function poll(attempts) {
+            fetchPresetForSession(sessionData.externalUserId).then(function(data) {
+              console.log("[TwinStore] poll attempt", 31 - attempts, "response:", JSON.stringify(data));
+              if (data && data.preset) {
+                applyPreset(data.preset, "post-link-poll");
+                var codeToShow = localStorage.getItem("amz_discount_code") || DEFAULT_DISCOUNT_CODE;
+                showSuccessMessage(codeToShow, data.preset.display_name, sessionData.externalUserId);
+                var btn = document.createElement("button");
+                btn.className = "amz-signout";
+                btn.textContent = "Unlink Amazon";
+                btn.addEventListener("click", function() {
+                  localStorage.removeItem("amz_external_user_id");
+                  localStorage.removeItem("amz_discount_code");
+                  localStorage.removeItem("amz_just_linked");
+                  window.location.reload();
+                });
+                document.body.appendChild(btn);
+              } else if (attempts > 1) {
+                setTimeout(function() { poll(attempts - 1); }, 3000);
+              }
+            });
+          })(30);
         },
       });
     } catch (error) {

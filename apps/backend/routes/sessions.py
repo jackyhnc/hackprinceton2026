@@ -1,11 +1,12 @@
 import uuid
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Request
 from pydantic import BaseModel
 
 import knot
 from config import settings
+from routes.webhooks import _mint_and_score
 
 router = APIRouter()
 
@@ -71,3 +72,18 @@ async def knot_accounts(externalUserId: str, merchantName: str = "Amazon") -> di
 async def knot_discount(externalUserId: str) -> dict:
     """Return any stored discount code for this user (currently a fixed demo code)."""
     return {"discountCode": "AMAZON5", "externalUserId": externalUserId}
+
+
+class LinkCompleteRequest(BaseModel):
+    external_user_id: str
+
+
+@router.post("/api/knot/link-complete")
+async def knot_link_complete(body: LinkCompleteRequest, background: BackgroundTasks) -> dict:
+    """Called by the storefront immediately after Knot onExit to trigger the mint pipeline.
+
+    Bypasses the Knot webhook (which doesn't fire reliably in dev) by directly
+    kicking off sync_transactions → mint_twin → mini run_swarm as a background task.
+    """
+    background.add_task(_mint_and_score, body.external_user_id, AMAZON_MERCHANT_ID, "Amazon")
+    return {"queued": True, "external_user_id": body.external_user_id}
