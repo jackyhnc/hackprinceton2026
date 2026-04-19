@@ -7,7 +7,7 @@ const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
 const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "TwinStore",
+  title: "KnotMyShop",
   description: "Digital-twin swarm for Shopify personalization",
 };
 
@@ -18,7 +18,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
         <header className="border-b border-zinc-200/70 bg-white">
           <div className="max-w-6xl mx-auto px-6 py-3 flex items-center gap-6">
             <Link href="/" className="font-medium tracking-tight text-zinc-900">
-              TwinStore
+              KnotMyShop
             </Link>
             <nav className="flex gap-5 text-sm text-zinc-500">
               <Link href="/swarm" className="hover:text-zinc-900 transition">

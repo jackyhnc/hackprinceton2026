@@ -84,7 +84,7 @@ export default function Home() {
     <div className="max-w-6xl w-full mx-auto px-6 py-10">
       <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-4 mb-8">
         <div>
-          <h1 className="text-3xl font-semibold tracking-tight">TwinStore dashboard</h1>
+          <h1 className="text-3xl font-semibold tracking-tight">KnotMyShop dashboard</h1>
           <p className="text-zinc-600 mt-2 max-w-2xl text-sm">
             Digital twins mint from shopper purchase history, debate the storefront, and pick the
             layout variant each cluster responds to. Your job is to watch the rerun and ship.
