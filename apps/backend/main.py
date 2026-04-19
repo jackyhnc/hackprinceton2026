@@ -4,7 +4,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from config import settings
-from routes import preset, sessions, swarm, twins, webhooks
+from routes import dashboard, preset, sessions, swarm, twins, webhooks
 
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s"
@@ -24,6 +24,7 @@ app.include_router(webhooks.router)
 app.include_router(twins.router)
 app.include_router(swarm.router)
 app.include_router(preset.router)
+app.include_router(dashboard.router)
 
 
 @app.get("/health")
