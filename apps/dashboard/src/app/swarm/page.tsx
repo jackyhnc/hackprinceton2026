@@ -100,6 +100,7 @@ export default function SwarmPage() {
   const sizeRef = useRef<{ w: number; h: number }>({ w: 900, h: 600 });
   const isDoneRef = useRef(false);
   const clusteringStartedRef = useRef(false); // triggers gossip fade
+  const runStartTimeRef = useRef<number>(0);  // ms timestamp of run_start
   // Sync refs so callbacks always read the current value without stale closures
   const twinNamesRef = useRef<Record<string, string>>({});
   const runIdRef = useRef<string | null>(null);
@@ -183,24 +184,26 @@ export default function SwarmPage() {
     []
   );
 
-  // Add fake gossip edge: twinId → random other agent
+  // Add a fake gossip edge: twinId → one random other agent.
+  // Only fires after a 3-second warm-up (so early opinions are silent) and
+  // at a ~15% chance per event so the canvas doesn't fill with lines.
   const addGossipEdge = useCallback((fromId: string) => {
+    const elapsedMs = Date.now() - runStartTimeRef.current;
+    if (elapsedMs < 3000) return;           // quiet for the first 3 seconds
+    if (Math.random() > 0.15) return;       // ~15% chance
+
     const nodes = Array.from(twinsRef.current.values());
     if (nodes.length < 2) return;
     const from = twinsRef.current.get(fromId);
     if (!from) return;
-    // Pick 1-2 random peers (not self)
     const peers = nodes.filter((n) => n.id !== fromId);
-    const count = Math.min(peers.length, 1 + Math.floor(Math.random() * 2));
-    for (let i = 0; i < count; i++) {
-      const target = peers[Math.floor(Math.random() * peers.length)];
-      gossipEdgesRef.current.push({
-        from: { x: from.x, y: from.y },
-        to: { x: target.x, y: target.y },
-        t: 0,
-        life: 1,
-      });
-    }
+    const target = peers[Math.floor(Math.random() * peers.length)];
+    gossipEdgesRef.current.push({
+      from: { x: from.x, y: from.y },
+      to: { x: target.x, y: target.y },
+      t: 0,
+      life: 1,
+    });
   }, []);
 
   // Canvas rendering loop
@@ -388,6 +391,7 @@ export default function SwarmPage() {
       setStatus(event.stage);
       switch (event.stage) {
         case "run_start":
+          runStartTimeRef.current = Date.now();
           appendLog(`▶ run started — ${event.twin_count} agents`);
           if (event.twins) {
             layoutTwins(event.twins);
