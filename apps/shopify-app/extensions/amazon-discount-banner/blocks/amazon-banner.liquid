@@ -10,21 +10,18 @@
   var PRESET_POLL_INTERVAL_MS = 2000;
 
   // ---------- utilities ----------
-  function normalizedAppBaseUrl() {
-    if (!APP_BASE_URL) return "";
-    var t = String(APP_BASE_URL).trim();
-    if (!t || t === "https://example.com") return "/apps/knot";
-    return t.replace(/\/$/, "");
-  }
   function normalizedBackendUrl() {
     var t = String(TWINSTORE_BACKEND_URL || "").trim();
     if (!t) return "";
     return t.replace(/\/$/, "");
   }
+  // All Knot API calls (session create, accounts, discount) go directly to the
+  // TwinStore backend. The Shopify app proxy (/apps/knot) requires a live
+  // ngrok/tunnel URL configured in the Partners dashboard which isn't always
+  // available in development — routing through the backend is simpler and
+  // avoids the proxy entirely.
   function buildApiUrl(path) {
-    var base = normalizedAppBaseUrl();
-    if (!base) return "";
-    return base + path;
+    return buildBackendUrl(path);
   }
   function buildBackendUrl(path) {
     var base = normalizedBackendUrl();
