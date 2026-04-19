@@ -63,7 +63,11 @@ async def start_run(req: RunRequest, background: BackgroundTasks) -> dict:
     ).execute()
 
     background.add_task(
-        run_swarm, run_id=run_id, twin_ids=twin_ids, merchant_id=merchant_id
+        run_swarm,
+        run_id=run_id,
+        twin_ids=twin_ids,
+        merchant_id=merchant_id,
+        kind=req.kind,
     )
     logger.info("dispatched %s swarm run=%s twins=%d", req.kind, run_id, len(twin_ids))
     return {"run_id": run_id, "kind": req.kind, "twin_count": len(twin_ids)}

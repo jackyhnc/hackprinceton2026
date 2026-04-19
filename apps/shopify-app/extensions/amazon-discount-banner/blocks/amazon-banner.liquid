@@ -47,64 +47,45 @@
   }
 
   // ---------- preset application ----------
-  function applyCssVars(cssVars) {
-    if (!cssVars || typeof cssVars !== "object") return;
-    var root = document.documentElement;
-    Object.keys(cssVars).forEach(function(key) {
-      try { root.style.setProperty(key, String(cssVars[key])); } catch (_) {}
-    });
+  var PRESET_STYLE_ID = "twinstore-preset-style";
+  var PRESET_HERO_ID = "twinstore-preset-hero";
+  var HIDDEN_HERO_CLASS = "twinstore-native-hero-hidden";
+
+  function injectPresetCss(css) {
+    var node = document.getElementById(PRESET_STYLE_ID);
+    if (!node) {
+      node = document.createElement("style");
+      node.id = PRESET_STYLE_ID;
+      document.head.appendChild(node);
+    }
+    var hideRule = "main .shopify-section:first-of-type, main > section:first-of-type, main > .section:first-of-type { display: none !important; }";
+    node.textContent = (css || "") + "\n" + hideRule;
   }
 
-  function runTransform(tf) {
-    if (!tf || !tf.op) return;
-    var nodes = [];
-    try { nodes = tf.selector ? Array.from(document.querySelectorAll(tf.selector)) : []; }
-    catch (_) { return; }
-    nodes.forEach(function(n) {
-      try {
-        switch (tf.op) {
-          case "setText": n.textContent = tf.value; break;
-          case "addClass": if (tf.className) n.classList.add(tf.className); break;
-          case "removeClass": if (tf.className) n.classList.remove(tf.className); break;
-          case "setAttribute": if (tf.name) n.setAttribute(tf.name, tf.value); break;
-          case "hide": n.style.display = "none"; break;
-          case "show": n.style.display = ""; break;
-        }
-      } catch (_) {}
-    });
-  }
-
-  function applyOverrides(overrides) {
-    if (!overrides || typeof overrides !== "object") return;
-    var heroTitle = overrides.hero_title;
-    if (heroTitle) {
-      var heroNode = document.querySelector(
-        ".banner__heading, .section-header__heading, .hero__title, h1.banner__heading, h2.h0, h1"
-      );
-      if (heroNode) heroNode.textContent = heroTitle;
-    }
-    var ctaPrimary = overrides.cta_primary;
-    if (ctaPrimary) {
-      var ctaNode = document.querySelector(
-        ".banner__button, .hero__button, .button--primary, .shopify-payment-button__button"
-      );
-      if (ctaNode) ctaNode.textContent = ctaPrimary;
-    }
-    var badge = overrides.product_card_badge;
-    if (badge) {
-      document.querySelectorAll(".card__badge span, .product-card__badge span, .badge__text").forEach(function(n) {
-        n.textContent = badge;
-      });
-    }
+  function injectPresetHtml(html) {
+    if (!html) return false;
+    var main = document.querySelector("main#MainContent") || document.querySelector("main") || document.body;
+    if (!main) return false;
+    var existing = document.getElementById(PRESET_HERO_ID);
+    if (existing) existing.remove();
+    var wrapper = document.createElement("div");
+    wrapper.id = PRESET_HERO_ID;
+    wrapper.innerHTML = html;
+    main.insertBefore(wrapper, main.firstChild);
+    return true;
   }
 
   function applyPreset(preset, source) {
-    if (!preset || !preset.config) return false;
-    var cfg = preset.config;
-    applyCssVars(cfg.css_vars);
-    if (Array.isArray(cfg.transforms)) cfg.transforms.forEach(runTransform);
-    applyOverrides(cfg.overrides);
-    document.documentElement.setAttribute("data-twinstore-preset", preset.id || cfg.id || "unknown");
+    if (!preset) return false;
+    var html = preset.generated_html || "";
+    var css = preset.generated_css || "";
+    if (!html && !css) {
+      console.warn("[TwinStore] preset has no generated_html/css:", preset.id);
+      return false;
+    }
+    injectPresetCss(css);
+    injectPresetHtml(html);
+    document.documentElement.setAttribute("data-twinstore-preset", preset.id || "unknown");
     console.log("[TwinStore] preset applied:", preset.display_name || preset.id, "via", source);
     return true;
   }

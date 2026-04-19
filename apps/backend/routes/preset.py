@@ -53,7 +53,7 @@ def _build_response(merchant_id: str, twin_id: str) -> dict:
 
     preset_resp = (
         db.table("preset_library")
-        .select("id,display_name,description,config")
+        .select("id,display_name,description,change_summary,generated_html,generated_css,config")
         .eq("id", assignment["preset_id"])
         .limit(1)
         .execute()
@@ -75,7 +75,11 @@ def _build_response(merchant_id: str, twin_id: str) -> dict:
         "preset": {
             "id": preset["id"],
             "display_name": preset["display_name"],
-            "config": preset["config"],
+            "description": preset.get("description"),
+            "change_summary": preset.get("change_summary"),
+            "generated_html": preset.get("generated_html"),
+            "generated_css": preset.get("generated_css"),
+            "config": preset.get("config"),
         },
         "twin": twin,
         "assignment": {
