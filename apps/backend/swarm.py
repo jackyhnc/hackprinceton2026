@@ -28,7 +28,7 @@ from swarm_events import publish as publish_event
 logger = logging.getLogger("twinstore.swarm")
 
 PROMPT_DIR = REPO_ROOT / "packages" / "prompts"
-K2_CONCURRENCY = 8
+K2_CONCURRENCY = 2  # keep low so opinions trickle in visibly over time
 DEFAULT_CLUSTER_COUNT = 3
 
 
@@ -50,7 +50,11 @@ async def _twin_opinion(
     twin: dict[str, Any],
     sem: asyncio.Semaphore,
     run_id: str | None = None,
+    stagger_s: float = 0.0,
 ) -> dict[str, Any]:
+    import random
+    # Stagger entry so concurrent slots don't all start at the same tick.
+    await asyncio.sleep(stagger_s + random.uniform(0, 1.5))
     async with sem:
         if run_id:
             publish_event(run_id, {
@@ -274,7 +278,10 @@ async def _run_full(
 
     logger.info("swarm run=%s stage=opinion twins=%d", run_id, len(twins))
     opinions = await asyncio.gather(
-        *(_twin_opinion(op_sys, op_tpl, t, sem, run_id=run_id) for t in twins)
+        *(
+            _twin_opinion(op_sys, op_tpl, t, sem, run_id=run_id, stagger_s=i * 0.8)
+            for i, t in enumerate(twins)
+        )
     )
 
     effective_k = min(cluster_count, max(1, len(twins)))
