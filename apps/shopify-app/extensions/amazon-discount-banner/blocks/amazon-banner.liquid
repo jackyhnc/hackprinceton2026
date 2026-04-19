@@ -205,9 +205,16 @@
     return null;
   }
 
-  function showSuccessMessage(discountCode, presetName) {
+  var DASHBOARD_URL = "{{ block.settings.dashboard_url | default: 'http://localhost:4000' | strip | escape }}";
+
+  function showSuccessMessage(discountCode, presetName, externalUserId) {
     var presetLine = presetName ? "<br><span>Your storefront just morphed to <strong>" + presetName + "</strong>.</span>" : "";
-    showToast("You're in. 5% code: <strong>" + discountCode + "</strong>" + presetLine, false);
+    var profileLink = "";
+    if (externalUserId && DASHBOARD_URL) {
+      var profileUrl = DASHBOARD_URL.replace(/\/$/, "") + "/shopper/" + encodeURIComponent(externalUserId);
+      profileLink = "<br><a href=\"" + profileUrl + "\" target=\"_blank\" rel=\"noopener\" style=\"color:#FFB347;text-decoration:underline;font-size:12px;\">View your twin profile →</a>";
+    }
+    showToast("You're in. 5% code: <strong>" + discountCode + "</strong>" + presetLine + profileLink, false);
   }
 
   // ---------- PAGE LOAD: apply preset if twin already exists ----------
@@ -238,10 +245,10 @@
         var codeToShow = issuedCode || savedDiscountCode || DEFAULT_DISCOUNT_CODE;
         localStorage.setItem("amz_discount_code", codeToShow);
         var presetName = presetData && presetData.preset ? presetData.preset.display_name : null;
-        showSuccessMessage(codeToShow, presetName);
+        showSuccessMessage(codeToShow, presetName, userForFlow);
       });
     } else {
-      showSuccessMessage(savedDiscountCode || DEFAULT_DISCOUNT_CODE);
+      showSuccessMessage(savedDiscountCode || DEFAULT_DISCOUNT_CODE, null, savedExternalUserId);
     }
     removeUrlParams([SIGNUP_QUERY_KEY, USER_QUERY_KEY, "merchant"]);
   }
@@ -401,6 +408,13 @@
       "id": "discount_code",
       "label": "Fallback Discount Code",
       "default": "AMAZON5"
+    },
+    {
+      "type": "text",
+      "id": "dashboard_url",
+      "label": "TwinStore Dashboard URL",
+      "default": "http://localhost:4000",
+      "info": "URL of the merchant dashboard. Used to link shoppers to their twin profile page."
     }
   ]
 }

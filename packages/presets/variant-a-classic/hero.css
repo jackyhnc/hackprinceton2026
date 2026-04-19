@@ -6,13 +6,13 @@
   box-sizing: border-box;
   width: 100%;
   min-height: clamp(420px, 60vh, 680px);
-  background: radial-gradient(circle at 50% 30%, #fbf5ed 0%, var(--bg) 60%);
+  background: radial-gradient(ellipse at 50% 0%, #fdf7ee 0%, var(--bg) 70%);
   color: var(--ink);
   display: flex;
   align-items: center;
   justify-content: center;
   padding: clamp(40px, 6vw, 80px) clamp(20px, 4vw, 48px);
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  font-family: Georgia, "Times New Roman", serif;
 }
 .twinstore-hero--evermade-classic *,
 .twinstore-hero--evermade-classic *::before,
@@ -21,39 +21,58 @@
 }
 .twinstore-hero--evermade-classic__inner {
   text-align: center;
-  max-width: 640px;
+  max-width: 600px;
+}
+.twinstore-hero--evermade-classic__eyebrow {
+  margin: 0 0 20px 0;
+  font-size: 0.7rem;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--muted);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
 }
 .twinstore-hero--evermade-classic__headline {
-  font-size: clamp(2rem, 4vw + 1rem, 3.2rem);
-  line-height: 1.1;
-  font-weight: 500;
-  letter-spacing: -0.02em;
-  margin: 0 0 18px 0;
+  font-size: clamp(2.4rem, 5vw + 0.5rem, 3.8rem);
+  line-height: 1.12;
+  font-weight: 400;
+  letter-spacing: -0.01em;
+  margin: 0 0 20px 0;
+  color: var(--ink);
+}
+.twinstore-hero--evermade-classic__rule {
+  width: 48px;
+  height: 1px;
+  background: var(--accent);
+  margin: 0 auto 22px;
 }
 .twinstore-hero--evermade-classic__subhead {
-  font-size: clamp(1rem, 0.6vw + 0.8rem, 1.15rem);
-  line-height: 1.55;
+  font-size: clamp(0.95rem, 0.5vw + 0.85rem, 1.1rem);
+  line-height: 1.7;
   color: var(--muted);
-  margin: 0 0 32px 0;
+  margin: 0 0 34px 0;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
 }
 .twinstore-hero--evermade-classic__cta {
   display: inline-block;
   background: var(--ink);
   color: var(--bg);
-  padding: 14px 36px;
-  border-radius: 2px;
+  padding: 15px 40px;
+  border-radius: 1px;
   text-decoration: none;
-  font-size: 0.95rem;
-  letter-spacing: 0.04em;
+  font-size: 0.82rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   transition: background 120ms ease;
 }
 .twinstore-hero--evermade-classic__cta:hover {
   background: var(--accent);
 }
 .twinstore-hero--evermade-classic__note {
-  margin: 18px 0 0 0;
-  font-size: 0.72rem;
-  letter-spacing: 0.12em;
+  margin: 20px 0 0 0;
+  font-size: 0.7rem;
+  letter-spacing: 0.14em;
   text-transform: uppercase;
   color: var(--muted);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
 }

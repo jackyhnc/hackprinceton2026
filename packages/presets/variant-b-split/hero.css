@@ -1,9 +1,11 @@
+/* Split variant — two-column: editorial left, bold offer right */
 .twinstore-hero--evermade-split {
   --bg: #f6efe6;
   --ink: #2a2620;
   --muted: #766e63;
   --accent: #d96e4a;
-  --panel: #ece2d3;
+  --panel-bg: #2a2620;
+  --panel-ink: #f6efe6;
   box-sizing: border-box;
   width: 100%;
   min-height: clamp(440px, 62vh, 700px);
@@ -11,9 +13,6 @@
   color: var(--ink);
   display: grid;
   grid-template-columns: 1fr;
-  gap: clamp(24px, 4vw, 40px);
-  align-items: center;
-  padding: clamp(40px, 6vw, 80px) clamp(20px, 4vw, 56px);
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
 }
 .twinstore-hero--evermade-split *,
@@ -27,28 +26,32 @@
   }
 }
 .twinstore-hero--evermade-split__text {
-  max-width: 560px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: clamp(40px, 6vw, 80px) clamp(24px, 4vw, 64px);
+  max-width: 540px;
 }
 .twinstore-hero--evermade-split__eyebrow {
-  margin: 0 0 14px 0;
-  font-size: 0.72rem;
-  letter-spacing: 0.18em;
+  margin: 0 0 16px 0;
+  font-size: 0.68rem;
+  letter-spacing: 0.2em;
   text-transform: uppercase;
   color: var(--muted);
 }
 .twinstore-hero--evermade-split__headline {
-  font-size: clamp(2.1rem, 4vw + 1rem, 3.4rem);
-  line-height: 1.08;
+  font-size: clamp(2.2rem, 4vw + 0.8rem, 3.6rem);
+  line-height: 1.06;
   font-weight: 500;
-  letter-spacing: -0.02em;
-  margin: 0 0 16px 0;
+  letter-spacing: -0.025em;
+  margin: 0 0 18px 0;
 }
 .twinstore-hero--evermade-split__subhead {
-  font-size: clamp(1rem, 0.6vw + 0.82rem, 1.12rem);
-  line-height: 1.55;
+  font-size: clamp(0.95rem, 0.5vw + 0.85rem, 1.1rem);
+  line-height: 1.6;
   color: var(--muted);
-  margin: 0 0 28px 0;
-  max-width: 48ch;
+  margin: 0 0 30px 0;
+  max-width: 44ch;
 }
 .twinstore-hero--evermade-split__cta {
   display: inline-block;
@@ -57,45 +60,73 @@
   padding: 14px 32px;
   border-radius: 2px;
   text-decoration: none;
-  font-size: 0.95rem;
-  letter-spacing: 0.04em;
+  font-size: 0.88rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  align-self: flex-start;
   transition: background 120ms ease;
 }
 .twinstore-hero--evermade-split__cta:hover {
   background: var(--accent);
 }
+/* Offer panel */
 .twinstore-hero--evermade-split__panel {
-  background: linear-gradient(135deg, var(--panel) 0%, #d9c9ae 100%);
-  border-radius: 6px;
-  padding: clamp(28px, 4vw, 40px);
+  background: var(--panel-bg);
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  min-height: 220px;
+  align-items: center;
   justify-content: center;
+  padding: clamp(36px, 5vw, 60px) clamp(24px, 4vw, 48px);
+  text-align: center;
+  gap: 0;
+  position: relative;
+  overflow: hidden;
+}
+.twinstore-hero--evermade-split__panel::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(ellipse at 50% 100%, rgba(217,110,74,0.25) 0%, transparent 60%);
+  pointer-events: none;
 }
 .twinstore-hero--evermade-split__badge {
-  align-self: flex-start;
-  background: var(--ink);
-  color: var(--bg);
-  font-size: 0.7rem;
-  letter-spacing: 0.14em;
+  position: relative;
+  z-index: 1;
+  display: inline-block;
+  border: 1px solid rgba(246,239,230,0.2);
+  color: rgba(246,239,230,0.7);
+  font-size: 0.65rem;
+  letter-spacing: 0.16em;
   text-transform: uppercase;
-  padding: 6px 12px;
+  padding: 5px 14px;
   border-radius: 999px;
+  margin-bottom: 20px;
 }
-.twinstore-hero--evermade-split__offer {
-  margin: 8px 0 0 0;
-  font-size: clamp(2.4rem, 5vw + 1rem, 4rem);
-  line-height: 1;
-  font-weight: 600;
-  letter-spacing: -0.03em;
-  color: var(--ink);
+.twinstore-hero--evermade-split__offer-num {
+  position: relative;
+  z-index: 1;
+  font-size: clamp(3.5rem, 7vw + 1rem, 5.5rem);
+  line-height: 0.9;
+  font-weight: 700;
+  letter-spacing: -0.04em;
+  color: var(--accent);
+  margin: 0 0 4px 0;
+}
+.twinstore-hero--evermade-split__offer-label {
+  position: relative;
+  z-index: 1;
+  font-size: clamp(1rem, 1.5vw + 0.5rem, 1.4rem);
+  font-weight: 300;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--panel-ink);
+  margin: 0 0 20px 0;
 }
 .twinstore-hero--evermade-split__fineprint {
-  margin: 4px 0 0 0;
-  font-size: 0.82rem;
-  color: var(--muted);
+  position: relative;
+  z-index: 1;
+  font-size: 0.78rem;
+  color: rgba(246,239,230,0.45);
   line-height: 1.5;
-  max-width: 32ch;
+  max-width: 26ch;
 }

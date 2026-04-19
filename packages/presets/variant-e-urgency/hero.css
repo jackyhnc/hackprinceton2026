@@ -1,19 +1,22 @@
+/* Urgency variant — dark, high-contrast, sale-focused */
 .twinstore-hero--evermade-urgency {
-  --bg: #f6efe6;
-  --ink: #2a2620;
-  --muted: #766e63;
-  --accent: #d96e4a;
+  --bg: #1a1108;
+  --ink: #f6efe6;
+  --muted: rgba(246,239,230,0.6);
+  --accent: #e8854a;
+  --accent2: #f5c842;
   box-sizing: border-box;
   width: 100%;
-  min-height: clamp(440px, 62vh, 680px);
-  background:
-    radial-gradient(circle at 50% 10%, rgba(217, 110, 74, 0.16) 0%, transparent 55%),
-    var(--bg);
+  min-height: clamp(420px, 60vh, 680px);
+  background: var(--bg);
+  background-image:
+    radial-gradient(ellipse at 30% 50%, rgba(233, 133, 74, 0.18) 0%, transparent 55%),
+    radial-gradient(ellipse at 80% 20%, rgba(245, 200, 66, 0.1) 0%, transparent 45%);
   color: var(--ink);
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: clamp(40px, 6vw, 80px) clamp(20px, 4vw, 48px);
+  padding: clamp(40px, 6vw, 80px) clamp(20px, 4vw, 56px);
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
 }
 .twinstore-hero--evermade-urgency *,
@@ -27,25 +30,35 @@
 }
 .twinstore-hero--evermade-urgency__badge {
   display: inline-block;
-  background: var(--accent);
-  color: #fff;
-  font-size: 0.72rem;
-  letter-spacing: 0.18em;
+  background: var(--accent2);
+  color: #1a1108;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
   text-transform: uppercase;
-  padding: 8px 16px;
+  padding: 6px 16px;
   border-radius: 999px;
-  margin: 0 0 24px 0;
+  margin-bottom: 24px;
+}
+.twinstore-hero--evermade-urgency__discount {
+  font-size: clamp(4rem, 10vw + 1rem, 7rem);
+  line-height: 0.95;
+  font-weight: 800;
+  letter-spacing: -0.04em;
+  color: var(--accent);
+  margin: 0 0 8px 0;
 }
 .twinstore-hero--evermade-urgency__headline {
-  font-size: clamp(2.2rem, 5vw + 1rem, 3.8rem);
-  line-height: 1.05;
-  font-weight: 500;
-  letter-spacing: -0.025em;
+  font-size: clamp(1.6rem, 3vw + 0.5rem, 2.4rem);
+  line-height: 1.15;
+  font-weight: 400;
+  letter-spacing: -0.01em;
   margin: 0 0 16px 0;
+  color: var(--ink);
 }
 .twinstore-hero--evermade-urgency__subhead {
-  font-size: clamp(1rem, 0.6vw + 0.82rem, 1.15rem);
-  line-height: 1.55;
+  font-size: clamp(0.9rem, 0.5vw + 0.8rem, 1.05rem);
+  line-height: 1.6;
   color: var(--muted);
   margin: 0 0 32px 0;
 }
@@ -53,14 +66,23 @@
   display: inline-block;
   background: var(--accent);
   color: #fff;
-  padding: 14px 38px;
-  border-radius: 2px;
+  padding: 16px 44px;
+  border-radius: 3px;
   text-decoration: none;
   font-size: 0.95rem;
-  letter-spacing: 0.04em;
-  transition: background 120ms ease, transform 120ms ease;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  transition: background 120ms ease, transform 80ms ease;
 }
 .twinstore-hero--evermade-urgency__cta:hover {
-  background: #c35a36;
+  background: #f0a070;
   transform: translateY(-1px);
+}
+.twinstore-hero--evermade-urgency__timer {
+  margin: 18px 0 0 0;
+  font-size: 0.72rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--accent2);
+  opacity: 0.85;
 }

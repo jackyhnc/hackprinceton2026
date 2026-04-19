@@ -27,6 +27,9 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
               <Link href="/presets" className="hover:text-zinc-900 transition">
                 Presets
               </Link>
+              <Link href="/shopper" className="hover:text-zinc-900 transition">
+                My profile
+              </Link>
             </nav>
             <div className="flex-1" />
             <span className="text-xs text-zinc-400 font-mono">merchant dashboard</span>
